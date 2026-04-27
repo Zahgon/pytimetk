@@ -49,86 +49,17 @@ def glimpse(data: pd.DataFrame, max_width: int = 76, engine: str = "pandas") -> 
     ```
 
     """
-
-    # Common checks
-    check_dataframe_or_groupby(data)
-
-    if engine == "pandas":
-        return _glimpse_pandas(data, max_width)
-    elif engine == "polars":
-        return _glimpse_polars(data, max_width)
-    else:
-        raise ValueError("Invalid engine. Use 'pandas' or 'polars'.")
+    pass
 
 
 def _glimpse_pandas(data: pd.DataFrame, max_width: int = 76) -> None:
-    df = data.copy()
-
-    # find the max string lengths of the column names and dtypes for formatting
-    column_labels = [str(col) for col in df.columns]
-    _max_len = len(max(column_labels, key=len)) if column_labels else 0
-    _max_dtype_label_len = 15
-
-    # print the dimensions of the dataframe
-    print(f"{type(df)}: {df.shape[0]} rows of {df.shape[1]} columns")
-
-    # print the name, dtype and first few values of each column
-    for idx, column_label in enumerate(df.columns):
-        column_series = df.iloc[:, idx]
-        _col_vals = column_series.head(max_width).tolist()
-        _col_type = str(column_series.dtype)
-
-        column_name = column_labels[idx]
-        output_col = f"{column_name}:".ljust(_max_len + 1, " ")
-        output_dtype = f" {_col_type}".ljust(_max_dtype_label_len + 3, " ")
-
-        output_combined = f"{output_col} {output_dtype} {_col_vals}"
-
-        # trim the output if too long
-        if len(output_combined) > max_width:
-            output_combined = output_combined[0 : (max_width - 4)] + " ..."
-
-        print(output_combined)
-
-    return None
+    pass
 
 
 def _glimpse_polars(df, max_width=76):
-    _max_len = len(max(df.columns, key=len))
-
-    final_df = (
-        (
-            (pl.DataFrame(df.columns.to_list()).rename({"column_0": ""}))
-            .hstack(
-                pl.DataFrame(
-                    (pd.Series(df.dtypes.to_list())).astype("string").to_frame()
-                )
-            )
-            .hstack(pl.DataFrame(df).select(pl.all().head(15).implode()).transpose())
-        ).to_pandas()
-    ).rename(columns={"0": " ", "column_0": "  "})
-
-    final_df["  "] = (
-        final_df["  "]
-        .astype(str)
-        .str.slice(stop=(max_width - _max_len - 15))
-        .fillna("")
-        + "..."
-    )
-
     def make_lalign_formatter(df, cols=None):
-        if cols is None:
-            cols = df.columns[df.dtypes == "object"]
-        return {col: f"{{:<{df[col].str.len().max()}s}}".format for col in cols}
-
-    print(f"{type(df)}: {len(df)} rows of {len(df.columns)} columns", end="")
-    print(
-        final_df.to_string(
-            formatters=make_lalign_formatter(final_df), index=False, justify="left"
-        )
-    )
-
-    return None
+        pass
+    pass
 
 
 @pf.register_groupby_method
@@ -176,25 +107,7 @@ def sort_dataframe(
     ```
 
     """
-
-    if isinstance(data, pd.DataFrame):
-        sorted_df = data.sort_values(by=[date_column])
-        return sorted_df, sorted_df.index
-
-    if isinstance(data, pd.core.groupby.generic.DataFrameGroupBy):
-        group_names = data.grouper.names
-        frame = resolve_pandas_groupby_frame(data)
-        if not isinstance(frame, pd.DataFrame) and hasattr(frame, "to_pandas"):
-            frame = frame.to_pandas()
-        missing_group_cols = [name for name in group_names if name not in frame.columns]
-        if date_column not in frame.columns or missing_group_cols:
-            frame = frame.reset_index()
-        sorted_df = frame.sort_values(by=[*group_names, date_column])
-        if keep_grouped_df:
-            return sorted_df.groupby(group_names), sorted_df.index
-        return sorted_df, sorted_df.index
-
-    raise TypeError("Unsupported data type for sort_dataframe")
+    pass
 
 
 @pf.register_dataframe_method
@@ -216,25 +129,9 @@ def drop_zero_variance(
         a filtered DataFrame with columns that have non-zero variance.
 
     """
-
-    # Common checks
-    check_dataframe_or_groupby(data)
-
-    if isinstance(data, pd.core.groupby.generic.DataFrameGroupBy):
-        data = resolve_pandas_groupby_frame(data)
-
-    df = data.copy()
-
     def all_values_same(series):
-        return series.nunique() == 1
-
-    # Apply the function to each column and get columns to drop
-    columns_to_drop = [col for col in df.columns if all_values_same(df[col])]
-
-    # Drop the identified columns
-    df_filtered = df.drop(columns=columns_to_drop)
-
-    return df_filtered
+        pass
+    pass
 
 
 @pf.register_dataframe_method
@@ -265,21 +162,7 @@ def transform_columns(
         function.
 
     """
-    # Common checks
-    check_dataframe_or_groupby(data)
-
-    if isinstance(data, pd.core.groupby.generic.DataFrameGroupBy):
-        data = resolve_pandas_groupby_frame(data)
-
-    df = data.copy()
-
-    if isinstance(columns, str):
-        columns = [columns]
-
-    for col in df.columns:
-        if any(re.fullmatch(pattern, col) for pattern in columns) or col in columns:
-            df[col] = transform_func(df[col])
-    return df
+    pass
 
 
 @pf.register_dataframe_method
@@ -318,33 +201,12 @@ def flatten_multiindex_column_names(data: pd.DataFrame, sep="_") -> pd.DataFrame
 
     ```
     """
-    # Common checks
-    check_dataframe_or_groupby(data)
-
-    # Check if data is a Pandas MultiIndex
-    data.columns = [
-        sep.join(col).strip() if isinstance(col, tuple) else col
-        for col in data.columns.values
-    ]
-
-    return data
+    pass
 
 
 def pd_quantile(**kwargs):
     """Generates configuration for the rolling quantile function in Polars."""
-    # Designate this function as a 'configurable' type - this helps 'augment_expanding' recognize and process it appropriately
-    func_type = "configurable"
-    # Specify the Polars rolling function to be called, `rolling_<func_name>`
-    func_name = "quantile"
-    # Initial parameters for Polars' rolling quantile function
-    # Many will be updated by **kwargs or inferred externally based on the dataframe
-    default_kwargs = {
-        "q": None,
-        "interpolation": "midpoint",
-        "numeric_only": False,
-    }
-
-    return func_type, func_name, default_kwargs, kwargs
+    pass
 
 
 def update_dict(d1, d2):
@@ -354,7 +216,4 @@ def update_dict(d1, d2):
     This function will only update the values of existing keys in `d1`.
     New keys present in `d2` but not in `d1` will be ignored.
     """
-    for key in d1.keys():
-        if key in d2:
-            d1[key] = d2[key]
-    return d1
+    pass

@@ -12,12 +12,7 @@ def _coerce_to_timestamp(
     value: Union[str, datetime, pd.Timestamp, pd.DatetimeIndex],
     pick: str,
 ) -> pd.Timestamp:
-    if isinstance(value, pd.DatetimeIndex):
-        if len(value) == 0:
-            raise ValueError("DatetimeIndex inputs must contain at least one value.")
-        base = value[0] if pick == "start" else value[-1]
-        return pd.Timestamp(base)
-    return pd.Timestamp(value)
+    pass
 
 
 def _build_holiday_filter(
@@ -25,13 +20,7 @@ def _build_holiday_filter(
     remove_holidays: bool,
     country: Union[str, None],
 ) -> Sequence[pd.Timestamp]:
-    if not remove_holidays or len(dates) == 0:
-        return ()
-
-    country_key = country or "UnitedStates"
-    years = sorted(set(dates.year))
-    holiday_map = holidays.country_holidays(country_key, years=years)
-    return pd.to_datetime(list(holiday_map.keys()))
+    pass
 
 
 def _make_sequence(
@@ -43,25 +32,7 @@ def _make_sequence(
     country: Union[str, None],
     engine: str,
 ) -> Union[pd.Series, pl.Series]:
-    start_ts = _coerce_to_timestamp(start_date, "start")
-    end_ts = _coerce_to_timestamp(end_date, "end")
-
-    if start_ts > end_ts:
-        raise ValueError("`start_date` must be on or before `end_date`.")
-
-    all_days = pd.date_range(start=start_ts.normalize(), end=end_ts.normalize(), freq="D")
-    filtered = all_days[all_days.dayofweek.isin(allowed_weekdays)]
-
-    holidays_to_remove = _build_holiday_filter(filtered, remove_holidays, country)
-    if len(holidays_to_remove) > 0:
-        normalized_holidays = pd.to_datetime(holidays_to_remove).normalize()
-        filtered = filtered[~filtered.normalize().isin(normalized_holidays)]
-
-    if engine == "polars":
-        return pl.Series(label, filtered.to_pydatetime())
-    if engine == "pandas":
-        return pd.Series(filtered, name=label)
-    raise ValueError("Invalid engine. Use 'pandas' or 'polars'.")
+    pass
 
 
 @pf.register_series_method
@@ -145,20 +116,7 @@ def make_weekday_sequence(
                               engine             = 'polars')
     ```
     """
-
-    weekday_range = [0, 1, 2, 3, 4]
-    if sunday_to_thursday:
-        weekday_range = [6, 0, 1, 2, 3]
-
-    return _make_sequence(
-        start_date=start_date,
-        end_date=end_date,
-        allowed_weekdays=weekday_range,
-        label="Weekday Dates",
-        remove_holidays=remove_holidays,
-        country=country,
-        engine=engine,
-    )
+    pass
 
 
 @pf.register_series_method
@@ -239,17 +197,4 @@ def make_weekend_sequence(
                              engine          = 'polars')
     ```
     """
-
-    weekend_range = [5, 6]  # Saturday=5, Sunday=6
-    if friday_saturday:
-        weekend_range = [4, 5]
-
-    return _make_sequence(
-        start_date=start_date,
-        end_date=end_date,
-        allowed_weekdays=weekend_range,
-        label="Weekend Dates",
-        remove_holidays=remove_holidays,
-        country=country,
-        engine=engine,
-    )
+    pass

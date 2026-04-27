@@ -111,36 +111,4 @@ def make_future_timeseries(
     tk.make_future_timeseries(dates, 4, force_regular=True)
     ```
     """
-    if isinstance(idx, str):
-        idx = pd.to_datetime([idx])
-    elif isinstance(idx, list):
-        idx = pd.to_datetime(idx)
-
-    check_series_or_datetime(idx)
-
-    if isinstance(idx, pd.Series):
-        series = idx.copy()
-    elif isinstance(idx, pd.DatetimeIndex):
-        series = pd.Series(idx, name=idx.name or "idx")
-    else:
-        series = pd.Series(idx, name="idx")
-
-    series = pd.to_datetime(series)
-
-    if len(series) < 2 and freq is None:
-        raise ValueError("`freq` must be provided if `idx` contains only 1 date.")
-
-    dt_index = pd.DatetimeIndex(series.values)
-
-    freq_resolved = freq
-    if freq_resolved is None:
-        freq_resolved = get_frequency(dt_index, force_regular=force_regular)
-
-    if isinstance(freq_resolved, str):
-        freq_resolved = normalize_frequency_alias(freq_resolved)
-
-    future_dates = pd.date_range(
-        start=series.iloc[-1], periods=length_out + 1, freq=freq_resolved
-    )[1:]
-
-    return pd.Series(future_dates)
+    pass

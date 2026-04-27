@@ -29,16 +29,7 @@ def is_cuda_available() -> bool:
     RAPIDS. Failure to import the module or to query the driver is interpreted
     as CUDA being unavailable.
     """
-    global _CUDA_AVAILABLE_CACHE
-    if _CUDA_AVAILABLE_CACHE is not None:
-        return _CUDA_AVAILABLE_CACHE
-
-    try:
-        numba_cuda = importlib.import_module("numba.cuda")
-        _CUDA_AVAILABLE_CACHE = bool(numba_cuda.is_available())
-    except Exception:  # pragma: no cover - environment dependent
-        _CUDA_AVAILABLE_CACHE = False
-    return _CUDA_AVAILABLE_CACHE
+    pass
 
 
 def is_cudf_available() -> bool:
@@ -49,36 +40,14 @@ def is_cudf_available() -> bool:
     raised during import is treated as cudf being unavailable to prevent crashes
     in CPU-only deployments.
     """
-    global _CUDF_AVAILABLE_CACHE
-    if _CUDF_AVAILABLE_CACHE is not None:
-        return _CUDF_AVAILABLE_CACHE
-
-    spec = importlib.util.find_spec("cudf")
-    if spec is None:
-        _CUDF_AVAILABLE_CACHE = False
-        return _CUDF_AVAILABLE_CACHE
-
-    try:
-        import cudf  # type: ignore  # noqa: F401
-    except Exception:  # pragma: no cover - environment dependent
-        _CUDF_AVAILABLE_CACHE = False
-    else:
-        _CUDF_AVAILABLE_CACHE = True
-    return _CUDF_AVAILABLE_CACHE
+    pass
 
 
 def cudf_version() -> Optional[str]:
     """
     Return the cudf version if available, otherwise ``None``.
     """
-    if not is_cudf_available():
-        return None
-    try:
-        import cudf  # type: ignore
-
-        return getattr(cudf, "__version__", None)
-    except Exception:  # pragma: no cover - environment dependent
-        return None
+    pass
 
 
 def is_polars_gpu_available() -> bool:
@@ -88,7 +57,7 @@ def is_polars_gpu_available() -> bool:
     This does not validate that an NVIDIA device is present; it merely asserts
     that the runtime was installed with GPU support (``polars[gpu]``).
     """
-    return hasattr(pl, "GPUEngine")
+    pass
 
 
 __all__ = [

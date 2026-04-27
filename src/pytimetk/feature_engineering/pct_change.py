@@ -115,16 +115,4 @@ def augment_pct_change(
     pctdiff_df_single_two
     ```
     """
-
-    # Use augment_diffs
-    ret = augment_diffs(
-        data=data,
-        date_column=date_column,
-        value_column=value_column,
-        periods=periods,
-        normalize=True,
-        reduce_memory=reduce_memory,
-        engine=engine,
-    )
-
-    return ret
+    pass

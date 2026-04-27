@@ -31,82 +31,20 @@ IRREGULAR_TO_REGULAR = {
 
 def get_unit_and_scale(freq_median_seconds, engine="pandas"):
     # Use time series frequency table
-    _table = timeseries_unit_frequency_table(engine=engine).set_index("unit")
-
     def lookup_freq(unit, type="freq"):
-        return _table.loc[unit, type]
-
-    if freq_median_seconds < lookup_freq("min"):
-        _unit = "S"
-        _scale = freq_median_seconds
-    elif freq_median_seconds < lookup_freq("hour"):
-        _unit = "T"
-        _scale = freq_median_seconds / lookup_freq("min")
-    elif freq_median_seconds < lookup_freq("day"):
-        _unit = "H"
-        _scale = freq_median_seconds / lookup_freq("hour")
-    elif freq_median_seconds < lookup_freq("week"):
-        _unit = "D"
-        _scale = freq_median_seconds / lookup_freq("day")
-    elif freq_median_seconds < lookup_freq("month", "freq_min"):
-        _unit = "W"
-        _scale = freq_median_seconds / lookup_freq("week")
-    elif freq_median_seconds < lookup_freq("quarter", "freq_min"):
-        _unit = "M"
-        _scale = np.round(freq_median_seconds / lookup_freq("month"), 1)
-    elif freq_median_seconds < lookup_freq("year", "freq_min"):
-        _unit = "Q"
-        _scale = np.round(freq_median_seconds / lookup_freq("quarter"), 1)
-    else:
-        _unit = "Y"
-        _scale = np.round(freq_median_seconds / lookup_freq("year"), 1)
-
-    return _scale, _unit
+        pass
+    pass
 
 
 def _get_frequency_summary_polars(idx: pl.Series, force_regular: bool = False):
-    check_series_polars(idx)
-
-    pandas_series = idx.to_pandas()
-    return _get_frequency_summary_pandas(pandas_series, force_regular)
+    pass
 
 
 def _get_frequency_summary_pandas(
     idx: Union[pd.Series, pd.DatetimeIndex], force_regular: bool = False
 ):
     # common checks
-    check_series_or_datetime(idx)
-
-    # If idx is a DatetimeIndex, convert to Series
-    if isinstance(idx, pd.DatetimeIndex):
-        idx = pd.Series(idx, name="idx")
-
-    _freq_inferred = _get_pandas_frequency(idx, force_regular=force_regular)
-
-    _freq_median = idx.diff().median()
-
-    _freq_median_seconds = _freq_median.total_seconds()
-
-    _scale, _unit = get_unit_and_scale(_freq_median_seconds, engine="pandas")
-
-    # SWITCH DAYS IF REMAINDER IS BETWEEN 0.1 AND 0.9
-    if _unit in ["M", "Q", "Y"]:
-        remainder = _scale - int(_scale)
-        if 0.1 <= remainder <= 0.9:
-            # Switch to days
-            _scale = float(_freq_median.days)
-            _unit = "D"
-
-    ret = pd.DataFrame(
-        {
-            "freq_inferred_unit": [_freq_inferred],
-            "freq_median_scale": [_scale],
-            "freq_median_unit": [_unit],
-        }
-    )
-    ret.insert(1, "freq_median_timedelta", pd.to_timedelta([str(_freq_median)]))
-
-    return ret
+    pass
 
 
 def get_frequency_summary(
@@ -174,13 +112,7 @@ def get_frequency_summary(
     tk.get_frequency_summary(idx, engine="polars")
     ```
     """
-
-    if engine == "pandas":
-        return _get_frequency_summary_pandas(idx, force_regular)
-    elif engine == "polars":
-        return _get_frequency_summary_polars(idx, force_regular)
-    else:
-        raise ValueError("Invalid engine. Use 'pandas' or 'polars'.")
+    pass
 
 
 @pf.register_series_method
@@ -220,27 +152,7 @@ def get_frequency(
         The frequency of the given pandas series or datetime index.
 
     """
-    # common checks
-    check_series_or_datetime(idx)
-
-    if len(idx) < 2:
-        raise ValueError(
-            "Cannot determine frequency with less than 2 timestamps. Please provide a timeseries with at least 2 timestamps."
-        )
-
-    if isinstance(idx, pd.Series):
-        idx = pd.to_datetime(idx.values)
-
-    freq = _get_pandas_frequency(idx, force_regular)
-
-    if freq is None:
-        freq = _get_manual_frequency(idx)
-
-    # Convert to numeric
-    if numeric:
-        freq = _get_median_timestamps(idx, freq)
-
-    return freq
+    pass
 
 
 def timeseries_unit_frequency_table(
@@ -290,44 +202,15 @@ def timeseries_unit_frequency_table(
     ```
 
     """
-    if engine == "pandas":
-        return _timeseries_unit_frequency_table_pandas(wide_format)
-    elif engine == "polars":
-        return _timeseries_unit_frequency_table_polars(wide_format)
-    else:
-        raise ValueError("Invalid engine. Use 'pandas' or 'polars'.")
+    pass
 
 
 def _timeseries_unit_frequency_table_pandas(wide_format: bool = False) -> pd.DataFrame:
-    _table = pd.DataFrame(
-        {
-            "unit": ["sec", "min", "hour", "day", "week", "month", "quarter", "year"],
-            "freq": [0, 60, 3600, 86400, 604800, 2678400, 7948800, 31622400],
-            "freq_min": [0, 60, 3600, 86400, 604800, 2419200, 7776000, 31536000],
-            "freq_max": [0, 60, 3600, 86400, 604800, 2678400, 7948800, 31622400],
-        }
-    )
-
-    if wide_format:
-        _table = _table.set_index("unit").T
-
-    return _table
+    pass
 
 
 def _timeseries_unit_frequency_table_polars(wide_format: bool = False) -> pd.DataFrame:
-    _table = pl.DataFrame(
-        {
-            "unit": ["sec", "min", "hour", "day", "week", "month", "quarter", "year"],
-            "freq": [0, 60, 3600, 86400, 604800, 2678400, 7948800, 31622400],
-            "freq_min": [0, 60, 3600, 86400, 604800, 2419200, 7776000, 31536000],
-            "freq_max": [0, 60, 3600, 86400, 604800, 2678400, 7948800, 31622400],
-        }
-    ).to_pandas()
-
-    if wide_format:
-        _table = _table.set_index("unit").T
-
-    return _table
+    pass
 
 
 def time_scale_template(
@@ -367,42 +250,15 @@ def time_scale_template(
     ```
 
     """
-    if engine == "pandas":
-        return _time_scale_template_pandas(wide_format)
-    elif engine == "polars":
-        return _time_scale_template_polars(wide_format)
-    else:
-        raise ValueError("Invalid engine. Use 'pandas' or 'polars'.")
+    pass
 
 
 def _time_scale_template_pandas(wide_format: bool = False):
-    _table = pd.DataFrame(
-        {
-            "median_unit": ["S", "T", "H", "D", "W", "M", "Q", "Y"],
-            "seasonal_period": ["1H", "1D", "1D", "1W", "1Q", "1Y", "1Y", "5Y"],
-            "trend_period": ["12H", "14D", "1M", "1Q", "1Y", "5Y", "10Y", "30Y"],
-        }
-    )
-
-    if wide_format:
-        _table = _table.set_index("median_unit").T
-
-    return _table
+    pass
 
 
 def _time_scale_template_polars(wide_format: bool = False):
-    _table = pl.DataFrame(
-        {
-            "median_unit": ["S", "T", "H", "D", "W", "M", "Q", "Y"],
-            "seasonal_period": ["1H", "1D", "1D", "1W", "1Q", "1Y", "1Y", "5Y"],
-            "trend_period": ["12H", "14D", "1M", "1Q", "1Y", "5Y", "10Y", "30Y"],
-        }
-    ).to_pandas()
-
-    if wide_format:
-        _table = _table.set_index("median_unit").T
-
-    return _table
+    pass
 
 
 @pf.register_series_method
@@ -472,51 +328,9 @@ def get_seasonal_frequency(
     tk.get_seasonal_frequency(idx, engine='polars')
     ```
     """
-
-    polars_idx = idx if isinstance(idx, pl.Series) else None
-    pandas_idx = idx.to_pandas() if isinstance(idx, pl.Series) else idx
-
-    check_series_or_datetime(pandas_idx)
-
-    # If idx is a DatetimeIndex, convert to Series
-    if isinstance(pandas_idx, pd.DatetimeIndex):
-        pandas_idx = pd.Series(pandas_idx, name="idx")
-
-    summary_input = (
-        polars_idx if (polars_idx is not None and engine == "polars") else pandas_idx
-    )
-
-    summary_freq = get_frequency_summary(
-        summary_input,
-        force_regular=force_regular,
-        engine=engine,
-    )
-
-    scale = summary_freq["freq_median_scale"].values[0]
-    unit = summary_freq["freq_median_unit"].values[0]
-
-    unit = unit[0]  # Get first letter if "MS", "QS", "AS", etc.
-
-    if unit == "D":
-        if scale > 1:
-            if scale > 360:
-                unit = "Y"
-            elif scale > 31:
-                unit = "Q"
-            else:
-                unit = "M"
-
     def _lookup_seasonal_period(unit):
-        return time_scale_template(wide_format=True, engine=engine)[unit][
-            "seasonal_period"
-        ]
-
-    _period = _lookup_seasonal_period(unit)
-
-    if numeric:
-        _period = _get_median_timestamps(pandas_idx, _period)
-
-    return _period
+        pass
+    pass
 
 
 @pf.register_series_method
@@ -586,71 +400,13 @@ def get_trend_frequency(
     tk.get_trend_frequency(idx, engine='polars')
     ```
     """
-
-    polars_idx = idx if isinstance(idx, pl.Series) else None
-    pandas_idx = idx.to_pandas() if isinstance(idx, pl.Series) else idx
-
-    check_series_or_datetime(pandas_idx)
-
-    # If idx is a DatetimeIndex, convert to Series
-    if isinstance(pandas_idx, pd.DatetimeIndex):
-        pandas_idx = pd.Series(pandas_idx, name="idx")
-
-    summary_input = (
-        polars_idx if (polars_idx is not None and engine == "polars") else pandas_idx
-    )
-
-    summary_freq = get_frequency_summary(
-        summary_input,
-        force_regular=force_regular,
-        engine=engine,
-    )
-
-    scale = summary_freq["freq_median_scale"].values[0]
-    unit = summary_freq["freq_median_unit"].values[0]
-
-    if unit == "D":
-        if scale > 1:
-            if scale > 360:
-                unit = "Y"
-            elif scale > 31:
-                unit = "Q"
-            else:
-                unit = "M"
-
     def _lookup_trend_period(unit):
-        return time_scale_template(wide_format=True, engine=engine)[unit][
-            "trend_period"
-        ]
-
-    _period = _lookup_trend_period(unit)
-
-    if numeric:
-        _period = _get_median_timestamps(pandas_idx, _period)
-
-    return _period
+        pass
+    pass
 
 
 def _get_median_timestamps(idx, period):
-    check_series_or_datetime(idx)
-
-    # If idx is a DatetimeIndex, convert to Series
-    if isinstance(idx, pd.DatetimeIndex):
-        idx = pd.Series(idx, name="idx")
-
-    if isinstance(idx, pd.Series):
-        idx = idx.copy()
-
-    idx_floor = floor_date(idx, period)
-    idx_floor.name = "idx_floor"
-
-    df = pd.DataFrame(idx_floor)
-
-    df["n"] = 1
-
-    ret = df.groupby("idx_floor").sum()
-
-    return ret.median().values[0]
+    pass
 
 
 # UTILITIES ---------------------------------------------------------------
@@ -670,38 +426,7 @@ def _get_manual_frequency(idx: Union[pd.Series, pd.DatetimeIndex]) -> str:
         a string representing the frequency alias.
 
     """
-
-    # common checks
-    check_series_or_datetime(idx)
-
-    freq_summary_df = get_frequency_summary(idx)
-
-    freq_median_scale = freq_summary_df["freq_median_scale"].values[0]
-    freq_median_unit = freq_summary_df["freq_median_unit"].values[0]
-    freq_median_timedelta = freq_summary_df["freq_median_timedelta"].values[0]
-
-    number = freq_median_scale
-    remainder = number - int(number)
-
-    # IRREGULAR FREQUENCIES (MONTH AND QUARTER)
-    if freq_median_unit in ["M", "Q", "Y"]:
-        if 0.1 <= remainder <= 0.9:
-            # Switch to days
-            days = freq_median_timedelta.astype("timedelta64[D]").astype(int)
-
-            freq_alias = f"{days}D"
-        else:
-            # Switch to Start
-            if isinstance(idx, pd.Series):
-                idx = idx.values
-            if idx[0].day == 1:
-                freq_alias = f"{int(number)}{freq_median_unit.upper()}S"
-            else:
-                freq_alias = f"{int(number)}{freq_median_unit.upper()}"
-    else:
-        freq_alias = f"{int(number)}{freq_median_unit.upper()}"
-
-    return freq_alias
+    pass
 
 
 def _get_pandas_frequency(
@@ -729,13 +454,4 @@ def _get_pandas_frequency(
         The frequency of the given pandas series or datetime index.
 
     """
-
-    check_series_or_datetime(idx)
-
-    freq = (
-        idx.inferred_freq
-        if isinstance(idx, pd.DatetimeIndex)
-        else pd.DatetimeIndex(idx.iloc[: min(len(idx), 10)]).inferred_freq
-    )
-
-    return IRREGULAR_TO_REGULAR.get(freq, freq) if force_regular and freq else freq
+    pass

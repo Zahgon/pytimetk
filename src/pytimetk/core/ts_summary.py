@@ -160,63 +160,12 @@ def ts_summary(
     pl_df.tk.ts_summary(date_column='date')
     ```
     """
-
-    if engine not in ["pandas", "polars"]:
-        raise ValueError(
-            f"Supported engines are 'pandas' or 'polars'. Found {engine}. Please select an authorized engine."
-        )
-
-    check_dataframe_or_groupby(data)
-    check_date_column(data, date_column)
-
-    engine_resolved = normalize_engine(engine, data)
-    conversion: FrameConversion = convert_to_engine(data, engine_resolved)
-    prepared = conversion.data
-
-    if engine_resolved == "pandas":
-        result = _ts_summary_pandas_dispatch(
-            prepared,
-            date_column=date_column,
-            threads=threads,
-            show_progress=show_progress,
-        )
-    else:
-        result = _ts_summary_polars_dispatch(
-            prepared,
-            date_column=date_column,
-            group_columns=list(conversion.group_columns or []),
-        )
-
-    if engine_resolved == "polars" and conversion.original_kind in (
-        "pandas_df",
-        "pandas_groupby",
-    ):
-        conversion.pandas_index = None
-
-    restored = restore_output_type(result, conversion)
-
-    if isinstance(restored, pd.DataFrame):
-        return restored
-
-    return restored
+    pass
 
 
 def _ts_summary(group: pd.DataFrame, date_column: str) -> pd.DataFrame:
     """Compute time series summary for a single group."""
-
-    # Make sure date is sorted
-    date = group.sort_values(by=date_column)[date_column]
-
-    # Compute summary statistics
-    date_summary = get_date_summary(date)
-    frequency_summary = get_frequency_summary(date)
-    diff_summary = get_diff_summary(date)
-    diff_summary_num = get_diff_summary(date, numeric=True)
-
-    # Combine summary statistics into a single DataFrame
-    return pd.concat(
-        [date_summary, frequency_summary, diff_summary, diff_summary_num], axis=1
-    )
+    pass
 
 
 def _ts_summary_pandas_dispatch(
@@ -225,31 +174,7 @@ def _ts_summary_pandas_dispatch(
     threads: int,
     show_progress: bool,
 ) -> pd.DataFrame:
-    if isinstance(prepared, pd.DataFrame):
-        return _ts_summary(prepared, date_column)
-
-    group_names = prepared.grouper.names
-    threads_resolved = get_threads(threads)
-
-    if threads_resolved == 1:
-        result = progress_apply(
-            prepared,
-            func=_ts_summary,
-            date_column=date_column,
-            show_progress=show_progress,
-            desc="TS Summarizing...",
-        )
-    else:
-        result = parallel_apply(
-            prepared,
-            func=_ts_summary,
-            date_column=date_column,
-            threads=threads_resolved,
-            show_progress=show_progress,
-            desc="TS Summarizing...",
-        )
-
-    return result.reset_index(level=group_names)
+    pass
 
 
 def _ts_summary_polars_dispatch(
@@ -257,52 +182,12 @@ def _ts_summary_polars_dispatch(
     date_column: str,
     group_columns: Sequence[str],
 ) -> pl.DataFrame:
-    if isinstance(prepared, pl.DataFrame):
-        return _ts_summary_polars(prepared, date_column)
-
-    frame = prepared.df
-    partitions = frame.partition_by(group_columns, maintain_order=True, as_dict=True)
-
-    summaries: List[pl.DataFrame] = []
-    for key, subgroup in partitions.items():
-        summary = _ts_summary_polars(subgroup, date_column)
-        key_tuple = key if isinstance(key, tuple) else (key,)
-        for col, value in zip(group_columns, key_tuple):
-            summary = summary.with_columns(pl.lit(value).alias(col))
-        ordered_cols = list(group_columns) + [
-            col for col in summary.columns if col not in group_columns
-        ]
-        summaries.append(summary.select(ordered_cols))
-
-    if not summaries:
-        return pl.DataFrame()
-
-    return pl.concat(summaries, how="vertical")
+    pass
 
 
 def _ts_summary_polars(data: pl.DataFrame, date_column: str) -> pl.DataFrame:
     """Compute time series summary for a single group. Polars version."""
-
-    frame = data.sort(date_column)
-    date = frame[date_column]
-
-    # Compute summary statistics
-    date_summary = compute_date_summary_polars(date, output_type="polars")
-    frequency_summary = pl.from_pandas(
-        get_frequency_summary(date.to_pandas(), engine="pandas")
-    )
-    diff_summary = get_diff_summary_polars(date).cast(pl.Duration("ns"))
-    diff_summary_num = get_diff_summary_polars(date, numeric=True).cast(pl.Float64)
-
-    df = pl.concat(
-        [date_summary, frequency_summary, diff_summary, diff_summary_num],
-        how="horizontal",
-    )
-
-    if "date_tz" in df.columns:
-        df = df.with_columns(pl.col("date_tz").cast(pl.Utf8()))
-
-    return df
+    pass
 
 
 def get_diff_summary(idx: Union[pd.Series, pd.DatetimeIndex], numeric: bool = False):
@@ -363,48 +248,7 @@ def get_diff_summary(idx: Union[pd.Series, pd.DatetimeIndex], numeric: bool = Fa
                               observations in the time series in seconds.
 
     """
-
-    # common checks
-    check_series_or_datetime(idx)
-
-    # If idx is a DatetimeIndex, convert to Series
-    if isinstance(idx, pd.DatetimeIndex):
-        idx = pd.Series(idx, name="idx")
-
-    if numeric:
-        idx = idx.astype(np.int64) // 10**9
-
-    date_diff = idx.diff()
-
-    _diff_min = date_diff.min()
-    _diff_q25 = date_diff.quantile(0.25)
-    _diff_median = date_diff.median()
-    _diff_mean = date_diff.mean()
-    _diff_q75 = date_diff.quantile(0.75)
-    _diff_max = date_diff.max()
-
-    ret = pd.DataFrame(
-        {
-            "diff_min": [_diff_min],
-            "diff_q25": [_diff_q25],
-            "diff_median": [_diff_median],
-            "diff_mean": [_diff_mean],
-            "diff_q75": [_diff_q75],
-            "diff_max": [_diff_max],
-        }
-    )
-
-    if numeric:
-        ret.columns = [
-            "diff_min_seconds",
-            "diff_q25_seconds",
-            "diff_median_seconds",
-            "diff_mean_seconds",
-            "diff_q75_seconds",
-            "diff_max_seconds",
-        ]
-
-    return ret
+    pass
 
 
 def get_diff_summary_polars(idx: pl.Series, numeric: bool = False):
@@ -465,28 +309,7 @@ def get_diff_summary_polars(idx: pl.Series, numeric: bool = False):
                               observations in the time series in seconds.
 
     """
-
-    # common checks
-    if not isinstance(idx, pl.Series):
-        raise TypeError("Expected pl.Series, got {}.".format(type(idx)))
-
-    keys = ["diff_min", "diff_q25", "diff_median", "diff_mean", "diff_q75", "diff_max"]
-    if numeric:
-        keys = map(lambda s: s + "_seconds", keys)
-        idx = idx.dt.epoch(time_unit="s")
-
-    date_diff = idx.diff()
-
-    values = [
-        date_diff.min(),
-        date_diff.quantile(0.25, interpolation="linear"),
-        date_diff.median(),
-        date_diff.mean(),
-        date_diff.quantile(0.75, interpolation="linear"),
-        date_diff.max(),
-    ]
-
-    return pl.DataFrame(dict(zip(keys, values)))
+    pass
 
 
 def get_date_summary(
@@ -521,45 +344,12 @@ def get_date_summary(
     - When using the 'polars' engine, timezone information is derived from the
       pandas input before conversion, as Polars does not natively preserve it.
     """
-    if not isinstance(idx, (pd.Series, pd.DatetimeIndex)):
-        raise TypeError(
-            f"Input must be of type pd.Series or pd.DatetimeIndex. Got {type(idx)}"
-        )
-
-    # Convert to Series if DatetimeIndex and extract timezone
-    if isinstance(idx, pd.DatetimeIndex):
-        idx = pd.Series(idx, name="idx")
-
-    if engine == "pandas":
-        return compute_date_summary_pandas(idx)
-    elif engine == "polars":
-        # Extract timezone from pandas before conversion
-        tz = idx.dt.tz
-        pl_idx = (
-            pl.Series("idx", idx.values)
-            if isinstance(idx, pd.Series)
-            else pl.from_pandas(idx)
-        )
-        return compute_date_summary_polars(pl_idx)  # No tz parameter needed
-    else:
-        raise ValueError("Invalid engine. Use 'pandas' or 'polars'.")
+    pass
 
 
 def compute_date_summary_pandas(idx: pd.Series) -> pd.DataFrame:
     """[Unchanged docstring]"""
-    _n = len(idx)
-    _tz = idx.dt.tz
-    _date_start = idx.min()
-    _date_end = idx.max()
-
-    return pd.DataFrame(
-        {
-            "date_n": [_n],
-            "date_tz": [_tz],
-            "date_start": [_date_start],
-            "date_end": [_date_end],
-        }
-    )
+    pass
 
 
 def compute_date_summary_polars(
@@ -585,30 +375,4 @@ def compute_date_summary_polars(
         - `date_start`: The first date in the index.
         - `date_end`: The last date in the index.
     """
-    if output_type not in ["pandas", "polars"]:
-        raise TypeError(f"Output type can only be pandas or polars. Got {output_type}")
-
-    # Attempt to infer timezone from dtype if available, otherwise assume None
-    tz = None
-    if idx.dtype == pl.Datetime and hasattr(idx.dtype, "time_zone"):
-        tz = idx.dtype.time_zone  # Polars 0.20+ supports time_zone in dtype
-
-    return (
-        pd.DataFrame(
-            {
-                "date_n": [len(idx)],
-                "date_tz": [tz],
-                "date_start": [idx.min()],
-                "date_end": [idx.max()],
-            }
-        )
-        if output_type == "pandas"
-        else pl.DataFrame(
-            {
-                "date_n": pl.Series([len(idx)]),
-                "date_tz": pl.Series([tz]),
-                "date_start": pl.Series([idx.min()], dtype=pl.Datetime("ns")),
-                "date_end": pl.Series([idx.max()], dtype=pl.Datetime("ns")),
-            }
-        )
-    )
+    pass

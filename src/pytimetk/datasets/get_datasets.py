@@ -5,11 +5,7 @@ from importlib.resources import files
 
 def _normalize_datetime_columns(frame: pd.DataFrame) -> pd.DataFrame:
     """Normalize pandas datetime columns to nanosecond precision."""
-
-    for column in frame.columns:
-        if pd.api.types.is_datetime64_any_dtype(frame[column].dtype):
-            frame[column] = frame[column].dt.as_unit("ns")
-    return frame
+    pass
 
 
 def load_dataset(
@@ -85,30 +81,7 @@ def load_dataset(
     df
     ```
     """
-    # Return the list of available datasets
-    dataset_list = get_available_datasets()
-
-    if verbose:
-        print("Available Datasets:")
-        print(dataset_list)
-
-    if name not in dataset_list:
-        raise ValueError(
-            f"Dataset {name} not found. Please choose from the following: \n{dataset_list}"
-        )
-
-    # Load the dataset
-    package_path = files("pytimetk")
-    # Reference to the a file within the package
-    text_path = f"{package_path}/datasets/{name}.csv"
-
-    if engine == "pandas":
-        with open(text_path, "r", encoding="utf-8") as f:
-            df = pd.read_csv(f, **kwargs)
-    elif engine == "polars":
-        df = pl.read_csv(text_path).to_pandas()
-
-    return _normalize_datetime_columns(df)
+    pass
 
 
 def get_available_datasets():
@@ -134,11 +107,4 @@ def get_available_datasets():
     ```
 
     """
-
-    pathlist = list(files("pytimetk.datasets").iterdir())
-    file_names = [path.name for path in pathlist]
-    dataset_list = [item for item in file_names if item.endswith(".csv")]
-    dataset_list = [name.rstrip(".csv") for name in dataset_list]
-    dataset_list = sorted(dataset_list)
-
-    return dataset_list
+    pass

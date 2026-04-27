@@ -30,46 +30,17 @@ def _resolve_selector_frame(
         pl.dataframe.group_by.GroupBy,
     ],
 ) -> pd.DataFrame:
-    if isinstance(data, pd.core.groupby.generic.DataFrameGroupBy):
-        return resolve_pandas_groupby_frame(data).copy()
-    if isinstance(data, pd.DataFrame):
-        return data.copy()
-    if isinstance(data, pl.dataframe.group_by.GroupBy):
-        base = getattr(data, "df", None)
-        if base is None:
-            raise TypeError(
-                "Unable to resolve columns from this polars GroupBy for selector resolution."
-            )
-        return base.to_pandas()
-    if isinstance(data, pl.DataFrame):
-        return data.to_pandas()
-    raise TypeError(
-        "Column selectors currently require pandas or polars data for `future_frame`."
-    )
+    pass
 
 
 def _normalize_frequency_spec(
     freq: Optional[Union[str, pd.DateOffset]]
 ) -> Optional[pd.DateOffset]:
-    if freq is None:
-        return None
-    if isinstance(freq, str):
-        freq = normalize_frequency_alias(freq)
-    if isinstance(freq, pd.DateOffset):
-        return freq
-    try:
-        return pd.tseries.frequencies.to_offset(freq)
-    except Exception:
-        duration = parse_human_duration(freq)
-        if isinstance(duration, pd.DateOffset):
-            return duration
-        return pd.tseries.frequencies.to_offset(pd.to_timedelta(duration))
+    pass
 
 
 def _frequency_to_str(freq: Optional[pd.DateOffset]) -> Optional[str]:
-    if freq is None:
-        return None
-    return freq.freqstr
+    pass
 
 
 
@@ -287,85 +258,7 @@ def future_frame(
     )
     ```
     """
-
-    # Common checks
-    check_dataframe_or_groupby(data)
-
-    selector_frame = _resolve_selector_frame(data)
-    if isinstance(date_column, str):
-        resolved_date_column = date_column
-    else:
-        resolved = resolve_column_selection(
-            selector_frame, date_column, allow_none=False, require_match=True
-        )
-        if len(resolved) != 1:
-            raise ValueError(
-                f"`date_column` selector must resolve to exactly one column (resolved={resolved})."
-            )
-        resolved_date_column = resolved[0]
-
-    date_column = resolved_date_column
-    check_date_column(selector_frame, date_column)
-
-    freq_offset = _normalize_frequency_spec(freq)
-
-    engine_resolved = normalize_engine(engine, data)
-
-    if engine_resolved == "pandas":
-        conversion = convert_to_engine(data, "pandas")
-        prepared = conversion.data
-        result = _future_frame_pandas(
-            data=prepared,
-            date_column=date_column,
-            length_out=length_out,
-            freq=freq_offset,
-            force_regular=force_regular,
-            bind_data=bind_data,
-            threads=threads,
-            show_progress=show_progress,
-            reduce_memory=reduce_memory,
-        )
-        return restore_output_type(result, conversion)
-
-    if engine_resolved == "polars":
-        conversion = convert_to_engine(data, "polars")
-        prepared = conversion.data
-        result_polars = _future_frame_polars(
-            prepared,
-            date_column=date_column,
-            length_out=length_out,
-            freq=freq_offset,
-            force_regular=force_regular,
-            bind_data=bind_data,
-            threads=threads,
-            show_progress=show_progress,
-            row_id_column=conversion.row_id_column,
-            group_columns=conversion.group_columns,
-        )
-        return restore_output_type(result_polars, conversion)
-
-    if engine_resolved == "cudf":
-        if cudf is None:  # pragma: no cover - optional dependency
-            raise ImportError(
-                "cudf is required for engine='cudf', but it is not installed."
-            )
-        conversion = convert_to_engine(data, "cudf")
-        pandas_prepared = conversion_to_pandas(conversion)
-        result_pd = _future_frame_pandas(
-            data=pandas_prepared,
-            date_column=date_column,
-            length_out=length_out,
-            freq=freq_offset,
-            force_regular=force_regular,
-            bind_data=bind_data,
-            threads=threads,
-            show_progress=show_progress,
-            reduce_memory=reduce_memory,
-        )
-        result_cudf = cudf.from_pandas(result_pd)
-        return restore_output_type(result_cudf, conversion)
-
-    raise ValueError("Invalid engine. Use 'pandas', 'polars', or 'cudf'.")
+    pass
 
 
 def _future_frame_pandas(
@@ -379,133 +272,7 @@ def _future_frame_pandas(
     show_progress: bool = True,
     reduce_memory: bool = False,
 ) -> pd.DataFrame:
-    working = data
-    if reduce_memory:
-        working = reduce_memory_usage(working)
-
-    if isinstance(working, pd.DataFrame):
-        df = working.copy()
-        df[date_column] = pd.to_datetime(df[date_column])
-
-        freq_resolved = freq
-        if freq_resolved is None:
-            freq_resolved = _normalize_frequency_spec(
-                get_frequency(
-                    df[date_column].sort_values(), force_regular=force_regular
-                )
-            )
-
-        future_index = _generate_future_index(
-            df[date_column].iloc[-1], freq_resolved, length_out
-        )
-        new_rows = pd.DataFrame({date_column: future_index})
-
-        if bind_data:
-            extended_df = pd.concat([df, new_rows], axis=0, ignore_index=True)
-        else:
-            extended_df = new_rows
-
-        constant_cols = [
-            col
-            for col in extended_df.columns
-            if col != date_column and extended_df[col].nunique(dropna=False) == 1
-        ]
-        if constant_cols:
-            extended_df[constant_cols] = extended_df[constant_cols].ffill()
-
-        result = extended_df
-
-    # If the data is grouped
-    elif isinstance(working, pd.core.groupby.generic.DataFrameGroupBy):
-        grouped = working
-        group_names = grouped.grouper.names
-
-        # If freq is None, infer the frequency from the first series in the data
-        freq_local = freq
-        if freq_local is None:
-            if len(grouped) == 0:
-                raise ValueError(
-                    "Cannot infer frequency from an empty grouped object. "
-                    "Provide `freq` explicitly."
-                )
-            label_of_first_group = next(iter(grouped.groups.keys()))
-            first_group = grouped.get_group(label_of_first_group)
-            freq_local = _normalize_frequency_spec(
-                get_frequency(
-                    pd.to_datetime(first_group[date_column]).sort_values(),
-                    force_regular=force_regular,
-                )
-            )
-
-        last_dates_df = grouped.agg({date_column: "max"}).reset_index()
-        last_dates_df[date_column] = pd.to_datetime(last_dates_df[date_column])
-
-        # Use parallel processing if threads is greater than 1
-        if threads != 1:
-            threads_resolved = get_threads(threads)
-
-            chunk_size = max(int(len(last_dates_df) / threads_resolved), 10)
-            chunk_size = max(chunk_size, 1)
-            subsets = [
-                last_dates_df.iloc[i : i + chunk_size]
-                for i in range(0, len(last_dates_df), chunk_size)
-            ]
-
-            args_list = [
-                (subset, date_column, group_names, length_out, freq_local)
-                for subset in subsets
-            ]
-            ray_results = run_ray_tasks(
-                _process_future_frame_subset,
-                args_list,
-                num_cpus=threads_resolved,
-                desc="Future framing...",
-                show_progress=show_progress,
-            )
-            future_dates_list = []
-            for subset_result in ray_results:
-                future_dates_list.extend(subset_result)
-
-        # Use non-parallel processing if threads is 1
-        else:
-            future_dates_list = []
-            for _, row in conditional_tqdm(
-                last_dates_df.iterrows(),
-                total=len(last_dates_df),
-                display=show_progress,
-                desc="Future framing...",
-            ):
-                future_dates_subset = _process_future_frame_rows(
-                    row, date_column, group_names, length_out, freq_local
-                )
-                future_dates_list.append(future_dates_subset)
-
-        if future_dates_list:
-            future_dates_df = (
-                pd.concat(future_dates_list, axis=0)
-                .reset_index(drop=True)
-            )
-        else:
-            future_dates_df = pd.DataFrame(
-                columns=list(group_names) + [date_column]
-            )
-
-        if bind_data:
-            grouped_df = resolve_pandas_groupby_frame(grouped)
-            extended_df = pd.concat([grouped_df, future_dates_df], axis=0).reset_index(
-                drop=True
-            )
-        else:
-            extended_df = future_dates_df
-
-        result = extended_df
-    else:
-        raise TypeError("Unsupported data type for future_frame().")
-
-    if reduce_memory:
-        result = reduce_memory_usage(result)
-
-    return result
+    pass
 
 
 # --------------------------------------------------------------------------- #
@@ -525,180 +292,9 @@ def _future_frame_polars(
     row_id_column: Optional[str],
     group_columns: Optional[Sequence[str]],
 ) -> pl.DataFrame:
-    if length_out < 0:
-        raise ValueError("`length_out` must be non-negative.")
-
-    freq = _normalize_frequency_spec(freq)
-
-    resolved_groups = resolve_polars_group_columns(data, group_columns)
-    frame = data.df if isinstance(data, pl.dataframe.group_by.GroupBy) else data
-
-    if date_column not in frame.columns:
-        raise KeyError(f"{date_column} not found in DataFrame")
-
-    dtype_date = frame.schema[date_column]
-    ordered_cols = list(frame.columns)
-    other_columns = [
-        col
-        for col in frame.columns
-        if col != date_column and (row_id_column is None or col != row_id_column)
-    ]
-
-    # Prepare row id counter when the conversion inserted synthetic identifiers
-    row_id_counter: Optional[int] = None
-    if row_id_column and row_id_column in frame.columns:
-        try:
-            max_row_id = frame.select(pl.col(row_id_column).max()).item()
-            row_id_counter = 0 if max_row_id is None else int(max_row_id) + 1
-        except Exception:
-            row_id_counter = None
-
     def _cast_series(series: pl.Series) -> pl.Series:
-        if dtype_date == pl.Date:
-            return series.cast(pl.Date)
-        if isinstance(dtype_date, pl.datatypes.Datetime):
-            return series.cast(
-                pl.Datetime(time_unit=dtype_date.time_unit, time_zone=dtype_date.time_zone)
-            )
-        return series
-
-    if resolved_groups:
-        partitions = frame.partition_by(resolved_groups, maintain_order=True)
-        if not partitions:
-            return frame
-
-        freq_local = freq
-        if freq_local is None:
-            sample_dates = (
-                partitions[0]
-                .select(pl.col(date_column))
-                .to_series()
-                .to_pandas()
-                .sort_values()
-            )
-            freq_local = _normalize_frequency_spec(
-                get_frequency(sample_dates, force_regular=force_regular)
-            )
-
-        results: List[pl.DataFrame] = []
-        iterator = conditional_tqdm(
-            partitions,
-            total=len(partitions),
-            display=show_progress,
-            desc="Future framing...",
-        )
-        for part in iterator:
-            part_sorted = part.sort(date_column)
-            last_value = (
-                part_sorted.select(pl.col(date_column).max()).to_series().item()
-            )
-            future_index = _generate_future_index(last_value, freq_local, length_out)
-            if len(future_index) == 0:
-                result_part = part_sorted if bind_data else part_sorted.head(0)
-                results.append(result_part)
-                continue
-
-            future_series = _cast_series(pl.Series(future_index))
-
-            new_rows_dict = {date_column: future_series}
-            for col in resolved_groups:
-                key_value = part_sorted.select(pl.col(col).first()).item()
-                new_rows_dict[col] = pl.Series(
-                    name=col,
-                    values=[key_value] * len(future_series),
-                    dtype=part_sorted.schema[col],
-                )
-            for col in other_columns:
-                if col in resolved_groups:
-                    continue
-                new_rows_dict[col] = pl.Series(
-                    name=col,
-                    values=[None] * len(future_series),
-                    dtype=part_sorted.schema[col],
-                )
-            if row_id_column and row_id_column in part_sorted.columns:
-                new_rows_dict[row_id_column] = pl.Series(
-                    name=row_id_column,
-                    values=range(
-                        row_id_counter or 0,
-                        (row_id_counter or 0) + len(future_series),
-                    ),
-                    dtype=part_sorted.schema.get(row_id_column, pl.Int64),
-                )
-                if row_id_counter is not None:
-                    row_id_counter += len(future_series)
-
-            new_rows = pl.DataFrame(new_rows_dict)
-            new_rows = new_rows.select(ordered_cols)
-
-            if bind_data:
-                combined = pl.concat(
-                    [part_sorted, new_rows],
-                    how="vertical_relaxed",
-                ).sort(resolved_groups + [date_column])
-                results.append(combined)
-            else:
-                results.append(new_rows.sort(resolved_groups + [date_column]))
-
-        result = pl.concat(results, how="vertical_relaxed")
-    else:
-        frame_sorted = frame.sort(date_column)
-        freq_resolved = freq
-        if freq_resolved is None:
-            sample_dates = (
-                frame_sorted.select(pl.col(date_column)).to_series().to_pandas().sort_values()
-            )
-            freq_resolved = _normalize_frequency_spec(
-                get_frequency(sample_dates, force_regular=force_regular)
-            )
-        last_value = frame_sorted.select(pl.col(date_column).max()).to_series().item()
-        future_index = _generate_future_index(last_value, freq_resolved, length_out)
-
-        if len(future_index) == 0:
-            result = frame_sorted if bind_data else frame_sorted.head(0)
-        else:
-            future_series = _cast_series(pl.Series(future_index))
-            new_rows_dict = {date_column: future_series}
-            for col in other_columns:
-                new_rows_dict[col] = pl.Series(
-                    name=col,
-                    values=[None] * len(future_series),
-                    dtype=frame_sorted.schema[col],
-                )
-            if row_id_column and row_id_column in frame_sorted.columns:
-                new_rows_dict[row_id_column] = pl.Series(
-                    name=row_id_column,
-                    values=range(
-                        row_id_counter or 0,
-                        (row_id_counter or 0) + len(future_series),
-                    ),
-                    dtype=frame_sorted.schema.get(row_id_column, pl.Int64),
-                )
-                if row_id_counter is not None:
-                    row_id_counter += len(future_series)
-
-            new_rows = pl.DataFrame(new_rows_dict)
-            new_rows = new_rows.select(ordered_cols)
-            if bind_data:
-                result = pl.concat(
-                    [frame_sorted, new_rows],
-                    how="vertical_relaxed",
-                ).sort(date_column)
-            else:
-                result = new_rows.sort(date_column)
-
-            if bind_data:
-                constant_cols: List[str] = []
-                for col in other_columns:
-                    unique = frame_sorted.select(pl.col(col).n_unique()).to_series().item()
-                    if unique == 1:
-                        constant_cols.append(col)
-                if constant_cols:
-                    result = result.with_columns(
-                        [pl.col(col).forward_fill() for col in constant_cols]
-                    )
-
-    return result
+        pass
+    pass
 
 
 # UTILITIES ------------------------------------------------------------------
@@ -707,41 +303,16 @@ def _future_frame_polars(
 def _process_future_frame_subset(
     subset, date_column, group_names, length_out, freq
 ):
-    future_dates_list = []
-    for _, row in subset.iterrows():
-        future_dates = _generate_future_index(row[date_column], freq, length_out)
-        if len(future_dates) == 0:
-            continue
-
-        future_dates_df = pd.DataFrame({date_column: future_dates})
-        for group_name in group_names:
-            future_dates_df[group_name] = row[group_name]
-
-        future_dates_list.append(future_dates_df)
-    return future_dates_list
+    pass
 
 
 def _process_future_frame_rows(
     row, date_column, group_names, length_out, freq
 ):
-    future_dates = _generate_future_index(row[date_column], freq, length_out)
-
-    future_dates_df = pd.DataFrame({date_column: future_dates})
-    for group_name in group_names:
-        future_dates_df[group_name] = row[group_name]
-
-    return future_dates_df
+    pass
 
 
 def _generate_future_index(
     anchor_value, freq: Optional[pd.DateOffset], length_out: int
 ) -> pd.DatetimeIndex:
-    if length_out <= 0:
-        return pd.DatetimeIndex([], dtype="datetime64[ns]")
-    if freq is None:
-        raise ValueError(
-            "Unable to determine frequency for future_frame. Provide `freq` explicitly."
-        )
-    anchor = pd.Timestamp(anchor_value)
-    future = pd.date_range(start=anchor, periods=length_out + 1, freq=freq)
-    return future[1:]
+    pass

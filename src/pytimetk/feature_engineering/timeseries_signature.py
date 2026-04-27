@@ -133,44 +133,7 @@ def augment_timeseries_signature(
     pl_df.tk.augment_timeseries_signature(date_column='order_date')
     ```
     """
-    # Run common checks
-    check_dataframe_or_groupby(data)
-    check_date_column(data, date_column)
-
-    engine_resolved = normalize_engine(engine, data)
-
-    if reduce_memory and engine_resolved == "polars":
-        warnings.warn(
-            "`reduce_memory=True` is only supported for pandas data.",
-            RuntimeWarning,
-            stacklevel=2,
-        )
-
-    conversion: FrameConversion = convert_to_engine(data, "pandas")
-    prepared_data = conversion.data
-
-    if isinstance(prepared_data, pd.core.groupby.generic.DataFrameGroupBy):
-        base_df = resolve_pandas_groupby_frame(prepared_data)
-    else:
-        base_df = prepared_data
-
-    feature_frame = _pandas_timeseries_signature(
-        base_df[[date_column]].copy(),
-        date_column=date_column,
-    ).drop(columns=[date_column])
-
-    result = base_df.copy()
-    result[feature_frame.columns] = feature_frame
-
-    if reduce_memory and engine_resolved == "pandas":
-        result = reduce_memory_usage(result)
-
-    restored = restore_output_type(result, conversion)
-
-    if isinstance(restored, pd.DataFrame):
-        return restored
-
-    return restored
+    pass
 
 
 @pf.register_series_method
@@ -261,44 +224,7 @@ def get_timeseries_signature(
     pd.Series(dates, name = "date").get_timeseries_signature(engine='polars').glimpse()
     ```
     """
-    # common checks
-    check_series_or_datetime(idx)
-
-    # If idx is a DatetimeIndex, convert to Series
-    if isinstance(idx, pd.DatetimeIndex):
-        idx = pd.Series(idx, name="idx")
-
-    # Check if idx is a Series
-    if not isinstance(idx, pd.Series):
-        raise TypeError("idx must be a pandas Series or DatetimeIndex object")
-
-    engine_normalised = (engine or "").strip().lower()
-    if engine_normalised in ("", "auto"):
-        engine_normalised = "pandas"
-
-    if engine_normalised not in ("pandas", "polars"):
-        raise ValueError("Invalid engine. Use 'pandas', 'polars', or 'auto'.")
-
-    if reduce_memory and engine_normalised == "polars":
-        warnings.warn(
-            "`reduce_memory=True` is only supported for pandas data.",
-            RuntimeWarning,
-            stacklevel=2,
-        )
-
-    name = idx.name or "idx"
-    idx = idx.rename(name)
-
-    base_df = idx.to_frame()
-    feature_frame = _pandas_timeseries_signature(base_df.copy(), date_column=name)
-
-    if reduce_memory and engine_normalised == "pandas":
-        feature_frame = reduce_memory_usage(feature_frame)
-
-    if engine_normalised == "polars":
-        return pl.from_pandas(feature_frame)
-
-    return feature_frame
+    pass
 
 
 # Monkey patch the method to Pandas Series objects
@@ -310,71 +236,4 @@ pd.Series.get_timeseries_signature = get_timeseries_signature
 
 
 def _pandas_timeseries_signature(data: pd.DataFrame, date_column: str) -> pd.DataFrame:
-    name = date_column
-    idx = data[name]
-
-    # Date-Time Index Feature
-    data[f"{name}_index_num"] = idx.astype(np.int64) // 10**9
-
-    # Yearly Features
-    data[f"{name}_year"] = idx.dt.year
-    data[f"{name}_year_iso"] = idx.dt.isocalendar().year
-    data[f"{name}_yearstart"] = idx.dt.is_year_start.astype("uint8")
-    data[f"{name}_yearend"] = idx.dt.is_year_end.astype("uint8")
-    data[f"{name}_leapyear"] = idx.dt.is_leap_year.astype("uint8")
-
-    # Semesterly Features
-    half = np.where(((idx.dt.quarter == 1) | (idx.dt.quarter == 2)), 1, 2)
-    data[f"{name}_half"] = pd.Series(half, index=idx.index)
-
-    # Quarterly Features
-    data[f"{name}_quarter"] = idx.dt.quarter
-    quarteryear = pd.PeriodIndex(idx, freq="Q")
-    data[f"{name}_quarteryear"] = pd.Series(quarteryear, index=idx.index).dt.strftime(
-        "%YQ%q"
-    )
-    data[f"{name}_quarterstart"] = idx.dt.is_quarter_start.astype("uint8")
-    data[f"{name}_quarterend"] = idx.dt.is_quarter_end.astype("uint8")
-
-    # Monthly Features
-    data[f"{name}_month"] = idx.dt.month
-    data[f"{name}_month_lbl"] = idx.dt.month_name()
-    data[f"{name}_monthstart"] = idx.dt.is_month_start.astype("uint8")
-    data[f"{name}_monthend"] = idx.dt.is_month_end.astype("uint8")
-
-    # Weekly Features
-    data[f"{name}_yweek"] = idx.dt.isocalendar().week
-    data[f"{name}_mweek"] = week_of_month(idx)
-
-    # Daily Features
-    data[f"{name}_wday"] = idx.dt.dayofweek + 1
-    data[f"{name}_wday_lbl"] = idx.dt.day_name()
-    data[f"{name}_mday"] = idx.dt.day
-    data[f"{name}_qday"] = (
-        idx.dt.tz_localize(None)
-        - pd.PeriodIndex(idx.dt.tz_localize(None), freq="Q").start_time
-    ).dt.days + 1
-    data[f"{name}_yday"] = idx.dt.dayofyear
-    weekend = np.where((idx.dt.dayofweek <= 5), 0, 1)
-    data[f"{name}_weekend"] = pd.Series(weekend, index=idx.index)
-
-    # Hourly Features
-    data[f"{name}_hour"] = idx.dt.hour
-
-    # Minute Features
-    data[f"{name}_minute"] = idx.dt.minute
-
-    # Second Features
-    data[f"{name}_second"] = idx.dt.second
-
-    # Microsecond Features
-    data[f"{name}_msecond"] = idx.dt.microsecond
-
-    # Nanosecond Features
-    data[f"{name}_nsecond"] = idx.dt.nanosecond
-
-    # AM/PM
-    am_pm = np.where((idx.dt.hour <= 12), "am", "pm")
-    data[f"{name}_am_pm"] = pd.Series(am_pm, index=idx.index)
-
-    return data
+    pass

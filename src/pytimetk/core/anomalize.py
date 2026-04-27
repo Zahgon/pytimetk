@@ -330,57 +330,7 @@ def anomalize(
     )
     ```
     """
-
-    check_dataframe_or_groupby(data)
-    check_date_column(data, date_column)
-    check_value_column(data, value_column)
-
-    engine_resolved = normalize_engine(engine, data)
-
-    if engine_resolved == "pandas":
-        conversion = convert_to_engine(data, "pandas")
-        prepared = conversion.data
-        result = _anomalize_dispatch_pandas(
-            prepared,
-            date_column=date_column,
-            value_column=value_column,
-            period=period,
-            trend=trend,
-            method=method,
-            decomp=decomp,
-            clean=clean,
-            iqr_alpha=iqr_alpha,
-            clean_alpha=clean_alpha,
-            max_anomalies=max_anomalies,
-            bind_data=bind_data,
-            reduce_memory=reduce_memory,
-            threads=threads,
-            show_progress=show_progress,
-            verbose=verbose,
-        )
-        return restore_output_type(result, conversion)
-
-    conversion = convert_to_engine(data, "polars")
-    pandas_prepared = conversion_to_pandas(conversion)
-    result_pd = _anomalize_dispatch_pandas(
-        pandas_prepared,
-        date_column=date_column,
-        value_column=value_column,
-        period=period,
-        trend=trend,
-        method=method,
-        decomp=decomp,
-        clean=clean,
-        iqr_alpha=iqr_alpha,
-        clean_alpha=clean_alpha,
-        max_anomalies=max_anomalies,
-        bind_data=bind_data,
-        reduce_memory=reduce_memory,
-        threads=threads,
-        show_progress=show_progress,
-        verbose=verbose,
-    )
-    return pl.from_pandas(result_pd)
+    pass
 
 
 def _anomalize_dispatch_pandas(
@@ -402,78 +352,7 @@ def _anomalize_dispatch_pandas(
     show_progress: bool,
     verbose: bool,
 ) -> pd.DataFrame:
-    working = data
-    if reduce_memory:
-        working = reduce_memory_usage(working)
-
-    sorted_data, _ = sort_dataframe(working, date_column, keep_grouped_df=True)
-
-    if isinstance(sorted_data, pd.DataFrame):
-        result = _anomalize(
-            data=sorted_data,
-            date_column=date_column,
-            value_column=value_column,
-            period=period,
-            trend=trend,
-            method=method,
-            decomp=decomp,
-            clean=clean,
-            iqr_alpha=iqr_alpha,
-            clean_alpha=clean_alpha,
-            max_anomalies=max_anomalies,
-            bind_data=bind_data,
-            verbose=verbose,
-        )
-    elif isinstance(sorted_data, pd.core.groupby.generic.DataFrameGroupBy):
-        group_names = sorted_data.grouper.names
-        threads_resolved = get_threads(threads)
-
-        if threads_resolved == 1:
-            result = progress_apply(
-                sorted_data,
-                func=_anomalize,
-                show_progress=show_progress,
-                desc="Anomalizing...",
-                date_column=date_column,
-                value_column=value_column,
-                period=period,
-                trend=trend,
-                method=method,
-                decomp=decomp,
-                clean=clean,
-                iqr_alpha=iqr_alpha,
-                clean_alpha=clean_alpha,
-                max_anomalies=max_anomalies,
-                bind_data=bind_data,
-                verbose=verbose,
-            ).reset_index(level=group_names)
-        else:
-            result = parallel_apply(
-                sorted_data,
-                _anomalize,
-                date_column=date_column,
-                value_column=value_column,
-                period=period,
-                trend=trend,
-                method=method,
-                decomp=decomp,
-                clean=clean,
-                iqr_alpha=iqr_alpha,
-                clean_alpha=clean_alpha,
-                max_anomalies=max_anomalies,
-                bind_data=bind_data,
-                threads=threads_resolved,
-                show_progress=show_progress,
-                verbose=verbose,
-                desc="Anomalizing...",
-            ).reset_index(level=group_names)
-    else:
-        raise TypeError("Unsupported data type for anomalize().")
-
-    if reduce_memory:
-        result = reduce_memory_usage(result)
-
-    return result.sort_index()
+    pass
 
 
 def _anomalize(
@@ -491,115 +370,7 @@ def _anomalize(
     bind_data: bool = False,
     verbose=False,
 ) -> pd.DataFrame:
-    orig_date_column = data[date_column]
-
-    data = data.copy()
-
-    # STEP 0: Get the seasonal period and trend frequency
-    if period is None:
-        period = get_seasonal_frequency(data[date_column], numeric=True)
-        period = int(period)
-    if verbose:
-        print(f"Using seasonal frequency of {period} observations")
-
-    if trend is None:
-        trend = get_trend_frequency(data[date_column], numeric=True)
-        trend = int(trend)
-    if verbose:
-        print(f"Using trend frequency of {trend} observations")
-
-    # STEP 1: Decompose the time series
-    if method == "twitter":
-        median_span = np.round(len(data) / trend)
-        median_span = int(median_span)
-
-        result = _twitter_decompose(
-            data=data,
-            date_column=date_column,
-            value_column=value_column,
-            period=period,
-            median_span=median_span,
-            model=decomp,
-        )
-    elif method == "stl":
-
-        def make_odd(n):
-            return n + 1 if n % 2 == 0 else n
-
-        seasonal = make_odd(period)
-        trend = make_odd(trend)
-
-        result = _stl_decompose(
-            data=data,
-            date_column=date_column,
-            value_column=value_column,
-            period=period,
-            seasonal=seasonal,
-            trend=trend,
-            robust=True,
-        )
-    else:
-        raise ValueError(
-            f"Method {method} is not supported. Please use one of 'stl' or 'twitter'."
-        )
-
-    # STEP 2: Identify the outliers
-
-    outlier_df = _iqr(
-        data=result, target="remainder", alpha=iqr_alpha, max_anoms=max_anomalies
-    )
-
-    # STEP 3: Recompose the time series
-
-    result["anomaly"] = outlier_df["outlier_reported"]
-    result["anomaly_score"] = outlier_df["score"]
-    result["anomaly_direction"] = outlier_df["direction"]
-
-    result["recomposed_l1"] = (
-        result["seasonal"] + result["trend"] + outlier_df["remainder_l1"]
-    )
-
-    result["recomposed_l2"] = (
-        result["seasonal"] + result["trend"] + outlier_df["remainder_l2"]
-    )
-
-    # STEP 4: Clean the Anomalies
-
-    if clean == "linear":
-        result["observed_clean"] = (
-            result["observed"]
-            .where(result["anomaly"] == "No", np.nan)
-            .interpolate(method=clean, limit_direction="both")
-        )
-    else:
-        # min_max
-        result["observed_clean"] = np.where(
-            result["anomaly_direction"] == -1,
-            result["recomposed_l1"]
-            + (
-                (1 - clean_alpha)
-                * (result["recomposed_l2"] - result["recomposed_l1"])
-                / 2
-            ),
-            np.where(
-                result["anomaly_direction"] == 1,
-                result["recomposed_l2"]
-                - (
-                    (1 - clean_alpha)
-                    * (result["recomposed_l2"] - result["recomposed_l1"])
-                    / 2
-                ),
-                result["observed"],
-            ),
-        )
-
-    result[date_column] = orig_date_column
-
-    # STEP 5: Bind the data
-    if bind_data:
-        result = pd.concat([data, result.drop(date_column, axis=1)], axis=1)
-
-    return result
+    pass
 
 
 def _twitter_decompose(
@@ -610,50 +381,9 @@ def _twitter_decompose(
     median_span=None,
     model="additive",
 ):
-    orig_index = data.index
-
-    series = data.set_index(date_column)[value_column]
-
-    # Need to add freq, trend, and kwargs
-    # TODO - Median Seasonal Trend (More robust to outliers)
-    result = seasonal_decompose(
-        series,
-        period=period,
-        model=model,
-        extrapolate_trend="freq",
-    )
-
-    # Construct TS Decomposition DataFrame
-    observed = series
-
-    seasadj = series - result.seasonal
-    seasadj.name = "seasadj"
-
-    # Calculate median trend
-    if median_span is None:
-        median_span = 4
-
     def repeat_sequence(seq, length_out):
-        quotient, remainder = divmod(length_out, len(seq))
-        return seq * quotient + seq[:remainder]
-
-    df = pd.DataFrame(seasadj)
-
-    df["median_index"] = sorted(repeat_sequence(list(range(median_span)), len(seasadj)))
-
-    trend = df.groupby("median_index")["seasadj"].transform("median")
-
-    resid = seasadj - trend
-
-    result_df = pd.concat([observed, result.seasonal, seasadj, trend, resid], axis=1)
-
-    result_df.columns = ["observed", "seasonal", "seasadj", "trend", "remainder"]
-
-    result_df.reset_index(inplace=True)
-
-    result_df.index = orig_index
-
-    return result_df
+        pass
+    pass
 
 
 def _seasonal_decompose(
@@ -666,68 +396,13 @@ def _seasonal_decompose(
     two_sided=True,
     extrapolate_trend="freq",
 ):
-    orig_index = data.index
-
-    series = data.set_index(date_column)[value_column]
-
-    # Need to add freq, trend, and kwargs
-    result = seasonal_decompose(
-        series,
-        model=model,
-        period=period,
-        filt=filt,
-        two_sided=two_sided,
-        extrapolate_trend=extrapolate_trend,
-    )
-
-    # Construct TS Decomposition DataFrame
-    observed = series
-
-    seasadj = series - result.seasonal
-
-    trend = result.trend
-
-    resid = seasadj - trend
-
-    result_df = pd.concat([observed, result.seasonal, seasadj, trend, resid], axis=1)
-
-    result_df.columns = ["observed", "seasonal", "seasadj", "trend", "remainder"]
-
-    result_df.reset_index(inplace=True)
-
-    result_df.index = orig_index
-
-    return result_df
+    pass
 
 
 def _stl_decompose(data, date_column, value_column, period=None, **kwargs):
-    orig_index = data.index
-
-    series = data.set_index(date_column)[value_column]
-
-    # Need to add freq, trend, and kwargs
-    stl = STL(series, period=period, **kwargs)
-
-    result = stl.fit()
-
-    # Construct TS Decomposition DataFrame
-    observed = series
-
-    seasadj = series - result.seasonal
-
-    trend = result.trend
-
-    resid = seasadj - trend
-
-    result_df = pd.concat([observed, result.seasonal, seasadj, trend, resid], axis=1)
-
-    result_df.columns = ["observed", "seasonal", "seasadj", "trend", "remainder"]
-
-    result_df.reset_index(inplace=True)
-
-    result_df.index = orig_index
-
-    return result_df
+    def make_odd(n):
+        pass
+    pass
 
 
 def _iqr(data, target, alpha=0.05, max_anoms=0.2):
@@ -750,35 +425,4 @@ def _iqr(data, target, alpha=0.05, max_anoms=0.2):
     outlier_dict = tk.iqr(df, 'y')
     ```
     """
-
-    data = data.copy()
-
-    # Compute the interquartile range
-    q1, q3 = np.percentile(data[target], [25, 75])
-    iq_range = q3 - q1
-    limits = [-1 * (q1 + (0.15 / alpha) * iq_range), q3 + (0.15 / alpha) * iq_range]
-
-    # Identify the outliers
-    outlier_idx = (data[target] < limits[0]) | (data[target] > limits[1])
-
-    # Calculate the anomaly_score from the centerline
-    centerline = sum(limits) / 2
-    data["score"] = abs(data[target] - centerline)
-
-    # Yes/No flag for outlier
-    data["outlier_reported"] = np.where(
-        data[target] > limits[1], "Yes", np.where(data[target] < limits[0], "Yes", "No")
-    )
-
-    # Direction of the outlier
-    data["direction"] = np.where(
-        data[target] > limits[1], 1, np.where(data[target] < limits[0], -1, 0)
-    )
-
-    # Remainder Limits
-    data["remainder_l1"] = limits[0]
-    data["remainder_l2"] = limits[1]
-
-    return data[
-        ["outlier_reported", "direction", "score", "remainder_l1", "remainder_l2"]
-    ]
+    pass

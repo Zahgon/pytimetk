@@ -44,17 +44,9 @@ def contains(
     contains("value", case=False)(columns)
     ```
     """
-
     def _selector(columns: pd.Index) -> List[str]:
-        if regex:
-            compiled = re.compile(pattern, 0 if case else re.IGNORECASE)
-            return [col for col in columns if compiled.search(col)]
-        if not case:
-            pattern_lower = pattern.lower()
-            return [col for col in columns if pattern_lower in col.lower()]
-        return [col for col in columns if pattern in col]
-
-    return _selector
+        pass
+    pass
 
 
 def starts_with(prefix: str, *, case: bool = True) -> Callable[[pd.Index], List[str]]:
@@ -71,14 +63,9 @@ def starts_with(prefix: str, *, case: bool = True) -> Callable[[pd.Index], List[
     starts_with("val")(columns)
     ```
     """
-
     def _selector(columns: pd.Index) -> List[str]:
-        if case:
-            return [col for col in columns if col.startswith(prefix)]
-        prefix_lower = prefix.lower()
-        return [col for col in columns if col.lower().startswith(prefix_lower)]
-
-    return _selector
+        pass
+    pass
 
 
 def ends_with(suffix: str, *, case: bool = True) -> Callable[[pd.Index], List[str]]:
@@ -95,14 +82,9 @@ def ends_with(suffix: str, *, case: bool = True) -> Callable[[pd.Index], List[st
     ends_with("value")(columns)
     ```
     """
-
     def _selector(columns: pd.Index) -> List[str]:
-        if case:
-            return [col for col in columns if col.endswith(suffix)]
-        suffix_lower = suffix.lower()
-        return [col for col in columns if col.lower().endswith(suffix_lower)]
-
-    return _selector
+        pass
+    pass
 
 
 def matches(pattern: str, *, flags: int = 0) -> Callable[[pd.Index], List[str]]:
@@ -119,12 +101,9 @@ def matches(pattern: str, *, flags: int = 0) -> Callable[[pd.Index], List[str]]:
     matches(r"^lag_\\d$")(columns)
     ```
     """
-    compiled = re.compile(pattern, flags=flags)
-
     def _selector(columns: pd.Index) -> List[str]:
-        return [col for col in columns if compiled.search(col)]
-
-    return _selector
+        pass
+    pass
 
 
 def resolve_column_selection(
@@ -183,67 +162,6 @@ def resolve_column_selection(
     tk.resolve_column_selection(pl_df, ["value"])
     ```
     """
-    if isinstance(data, pd.core.groupby.generic.DataFrameGroupBy):
-        columns = resolve_pandas_groupby_frame(data).columns
-    elif isinstance(data, pd.DataFrame):
-        columns = data.columns
-    elif pl is not None and isinstance(data, pl.DataFrame):
-        columns = data.columns
-    elif pl is not None:
-        df_attr = getattr(data, "df", None)
-        if isinstance(df_attr, pl.DataFrame):  # type: ignore[arg-type]
-            columns = df_attr.columns  # type: ignore[union-attr]
-        else:
-            raise TypeError("`data` must be a pandas or polars DataFrame/GroupBy.")
-    else:
-        raise TypeError("`data` must be a pandas or polars DataFrame/GroupBy.")
-
-    if selectors is None:
-        if allow_none:
-            return []
-        raise ValueError("Column selector cannot be None when `allow_none=False`.")
-
-    resolved: List[str] = []
-
     def _resolve_single(selector) -> List[str]:
-        if callable(selector):
-            result = list(selector(columns))
-            if require_match and len(result) == 0:
-                raise ValueError("Column selector callable returned no matches.")
-            return result
-
-        if isinstance(selector, re.Pattern):
-            result = [col for col in columns if selector.search(col)]
-            if require_match and len(result) == 0:
-                raise ValueError(
-                    f"Regular expression selector '{selector.pattern}' matched no columns."
-                )
-            return result
-
-        if isinstance(selector, str):
-            if selector not in columns:
-                if require_match:
-                    raise ValueError(f"Column '{selector}' not found in dataframe.")
-                return []
-            return [selector]
-
-        if isinstance(selector, Sequence):
-            collected: List[str] = []
-            for item in selector:
-                collected.extend(_resolve_single(item))
-            return collected
-
-        raise TypeError(f"Unsupported column selector: {selector!r}")
-
-    resolved.extend(_resolve_single(selectors))
-
-    if unique:
-        seen = set()
-        ordered: List[str] = []
-        for name in resolved:
-            if name not in seen:
-                seen.add(name)
-                ordered.append(name)
-        return ordered
-
-    return resolved
+        pass
+    pass

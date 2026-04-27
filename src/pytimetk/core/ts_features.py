@@ -218,36 +218,7 @@ def ts_features(
     )
     ```
     """
-    engine_resolved = normalize_engine(engine, data)
-
-    if engine_resolved == "pandas":
-        conversion = convert_to_engine(data, "pandas")
-        prepared = conversion.data
-        result = _ts_features_pandas(
-            prepared,
-            date_column=date_column,
-            value_column=value_column,
-            features=features,
-            freq=freq,
-            scale=scale,
-            threads=threads,
-            show_progress=show_progress,
-        )
-        return restore_output_type(result, conversion)
-
-    conversion = convert_to_engine(data, "polars")
-    pandas_prepared = conversion_to_pandas(conversion)
-    result_pd = _ts_features_pandas(
-        pandas_prepared,
-        date_column=date_column,
-        value_column=value_column,
-        features=features,
-        freq=freq,
-        scale=scale,
-        threads=threads,
-        show_progress=show_progress,
-    )
-    return pl.from_pandas(result_pd)
+    pass
 
 
 def _ts_features_pandas(
@@ -261,123 +232,8 @@ def _ts_features_pandas(
     threads: Optional[int],
     show_progress: bool,
 ) -> pd.DataFrame:
-    threads_resolved = get_threads(threads)
-
-    if isinstance(data, pd.DataFrame):
-        df = data.copy()
-        df.sort_values(by=[date_column], inplace=True)
-        df["unique_id"] = "X1"
-        df = df[["unique_id", date_column, value_column]]
-        group_names = ["unique_id"]
-    elif isinstance(data, pd.core.groupby.generic.DataFrameGroupBy):
-        group_names = list(data.grouper.names)
-        df = resolve_pandas_groupby_frame(data).copy()
-        df.sort_values(by=[*group_names, date_column], inplace=True)
-        df = df[[*group_names, date_column, value_column]]
-    else:
-        raise TypeError("Unsupported data type for ts_features.")
-
-    features_to_use = (
-        [
-            acf_features,
-            arch_stat,
-            crossing_points,
-            entropy,
-            flat_spots,
-            heterogeneity,
-            holt_parameters,
-            lumpiness,
-            nonlinearity,
-            pacf_features,
-            stl_features,
-            stability,
-            hw_parameters,
-            unitroot_kpss,
-            unitroot_pp,
-            series_length,
-            hurst,
-        ]
-        if features is None
-        else features
-    )
-
-    if isinstance(data, pd.DataFrame):
-        construct_df = df[group_names].copy()
-        construct_df["ds"] = df[date_column]
-        construct_df["y"] = df[value_column]
-    else:
-        construct_df = df[group_names].copy()
-        for col in group_names:
-            construct_df[col] = df[col].astype(str)
-        construct_df["unique_id"] = construct_df[group_names].apply(
-            lambda row: "_".join(row), axis=1
-        )
-
-        group_names_lookup_df = (
-            construct_df[[*group_names, "unique_id"]]
-            .drop_duplicates()
-            .reset_index(drop=True)
-        )
-
-        construct_df = construct_df.drop(columns=group_names)
-        construct_df["ds"] = df[date_column]
-        construct_df["y"] = df[value_column]
-
-    partial_get_feats = partial(
-        _get_feats,
-        freq=freq,
-        scale=scale,
-        features=features_to_use,
-        dict_freqs=dict_freqs,
-    )
-
-    if isinstance(data, pd.DataFrame):
-        name = "X1"
-        group = construct_df
-        return partial_get_feats(name, group, features=features_to_use)
-
-    if threads_resolved != 1:
-        grouped_unique = list(construct_df.groupby("unique_id"))
-        args_list = [
-            (name, group, freq, scale, features_to_use) for name, group in grouped_unique
-        ]
-        ray_results = run_ray_tasks(
-            _tsfeatures_ray_worker,
-            args_list,
-            num_cpus=threads_resolved,
-            desc="TS Featurizing...",
-            show_progress=show_progress,
-        )
-        ts_features_frames = ray_results
-    else:
-        ts_features_frames = []
-        total_groups = construct_df["unique_id"].nunique()
-        for name, group in conditional_tqdm(
-            construct_df.groupby("unique_id"),
-            total=total_groups,
-            desc="TS Featurizing...",
-            display=show_progress,
-        ):
-            result = partial_get_feats(name, group, features=features_to_use)
-            ts_features_frames.append(result)
-
-    ts_features_df = pd.concat(ts_features_frames).rename_axis("unique_id")
-    ts_features_df = ts_features_df.reset_index()
-
-    ts_features_df = group_names_lookup_df.merge(
-        ts_features_df, on="unique_id", how="left"
-    )
-    ts_features_df.drop(columns=["unique_id"], inplace=True)
-
-    return ts_features_df
+    pass
 
 
 def _tsfeatures_ray_worker(name, group, freq, scale, features_to_use):
-    return _get_feats(
-        name,
-        group,
-        freq=freq,
-        scale=scale,
-        features=features_to_use,
-        dict_freqs=dict_freqs,
-    )
+    pass

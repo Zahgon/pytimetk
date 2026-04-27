@@ -240,133 +240,11 @@ def augment_wavelet(
     selector_example.glimpse()
     ```
     """
-    # Run common checks
-    check_dataframe_or_groupby(data)
-    date_column, value_columns = resolve_shift_columns(
-        data,
-        date_column=date_column,
-        value_column=value_column,
-        require_numeric=True,
-    )
-    if len(value_columns) != 1:
-        raise ValueError(
-            "`value_column` selector must resolve to exactly one column for augment_wavelet."
-        )
-    value_column = value_columns[0]
-
-    engine_resolved = normalize_engine(engine, data)
-
-    conversion: FrameConversion = convert_to_engine(data, engine_resolved)
-    prepared_data = conversion.data
-
-    if reduce_memory and engine_resolved == "pandas":
-        prepared_data = reduce_memory_usage(prepared_data)
-    elif reduce_memory and engine_resolved == "polars":
-        warnings.warn(
-            "`reduce_memory=True` is only supported for pandas data.",
-            RuntimeWarning,
-            stacklevel=2,
-        )
-
-    if engine_resolved == "pandas":
-        prepared_data, idx_unsorted = sort_dataframe(
-            prepared_data, date_column, keep_grouped_df=True
-        )
-
-    wavelet_functions = {
-        "morlet": morlet_wavelet,
-        "bump": bump_wavelet,
-        "analytic_morlet": analytic_morlet_wavelet,
-    }
-
-    if method not in wavelet_functions:
-        raise ValueError(
-            f"Invalid method '{method}'. Available methods are {list(wavelet_functions.keys())}"
-        )
-
-    if isinstance(scales, (int, float, str)):
-        scales_list = [scales]
-    else:
-        scales_list = list(scales)
-
-    wavelet_function = wavelet_functions[method]
-    try:
-        sample_rate_value = float(sample_rate)
-    except (TypeError, ValueError) as exc:
-        raise TypeError("`sample_rate` must be a numeric value.") from exc
-
     def compute_cwt(signal, wavelet_func, scale_values, sampling_rate):
-        coefficients = []
-        for scale in scale_values:
-            scale_float = float(scale)
-            if scale_float == 0:
-                raise ValueError("`scales` entries must be non-zero.")
-            wavelet_data = wavelet_func(
-                np.arange(-len(signal) // 2, len(signal) // 2)
-                / sampling_rate
-                / scale_float
-            )
-            normalization = 1.0 / np.sqrt(abs(scale_float))
-            convolution = normalization * np.convolve(
-                signal, np.conj(wavelet_data), mode="same"
-            )
-            coefficients.append(convolution)
-        return np.array(coefficients)
-
-    if engine_resolved == "pandas":
-
-        def _apply_cwt(df: pd.DataFrame) -> pd.DataFrame:
-            values = df[value_column].values
-            coeffs = compute_cwt(
-                values, wavelet_function, scales_list, sample_rate_value
-            )
-            for idx, scale in enumerate(scales_list):
-                df[f"{method}_scale_{scale}_real"] = coeffs[idx].real
-                df[f"{method}_scale_{scale}_imag"] = coeffs[idx].imag
-            return df
-
-        if isinstance(prepared_data, pd.core.groupby.generic.DataFrameGroupBy):
-            ret = pd.concat(
-                [_apply_cwt(group) for _, group in prepared_data]
-            ).reset_index(drop=True)
-        else:
-            ret = _apply_cwt(prepared_data)
-
-        ret.index = idx_unsorted
-
-        if reduce_memory:
-            ret = reduce_memory_usage(ret)
-
-        ret = ret.sort_index()
-
-        restored = restore_output_type(ret, conversion)
-
-        if isinstance(restored, pd.DataFrame):
-            return restored.sort_index()
-
-        return restored
-
-    if engine_resolved == "polars":
-        result_polars = _augment_wavelet_polars(
-            prepared_data,
-            date_column,
-            value_column,
-            wavelet_function,
-            scales_list,
-            sample_rate_value,
-            method,
-            conversion.group_columns,
-            conversion.row_id_column,
-        )
-
-        restored = restore_output_type(result_polars, conversion)
-
-        if isinstance(restored, pd.DataFrame):
-            return restored.sort_index()
-
-        return restored
-
-    raise ValueError("Invalid engine. Use 'pandas' or 'polars'.")
+        pass
+    def _apply_cwt(group_df):
+        pass
+    pass
 
 
 def _augment_wavelet_polars(
@@ -380,84 +258,23 @@ def _augment_wavelet_polars(
     group_columns: Optional[Sequence[str]],
     row_id_column: Optional[str],
 ) -> pl.DataFrame:
-    resolved_groups = resolve_polars_group_columns(data, group_columns)
-    frame = data.df if isinstance(data, pl.dataframe.group_by.GroupBy) else data
-
-    frame_with_id, row_col, generated = ensure_row_id_column(frame, row_id_column)
-
-    sort_keys = list(resolved_groups)
-    sort_keys.append(date_column)
-    sorted_frame = frame_with_id.sort(sort_keys)
-
     def compute_coefficients(signal: np.ndarray) -> List[np.ndarray]:
-        coeffs: List[np.ndarray] = []
-        for scale in scales:
-            scale_float = float(scale)
-            if scale_float == 0:
-                raise ValueError("`scales` entries must be non-zero.")
-            wavelet_data = wavelet_function(
-                np.arange(-len(signal) // 2, len(signal) // 2)
-                / sample_rate
-                / scale_float
-            )
-            normalization = 1.0 / np.sqrt(abs(scale_float))
-            convolution = normalization * np.convolve(
-                signal, np.conj(wavelet_data), mode="same"
-            )
-            coeffs.append(convolution)
-        return coeffs
-
+        pass
     def apply_wavelet(pl_group: pl.DataFrame) -> pl.DataFrame:
-        signal = pl_group[value_column].to_numpy()
-        coeffs = compute_coefficients(signal)
-        new_series = []
-        for idx, scale in enumerate(scales):
-            new_series.extend(
-                [
-                    pl.Series(f"{method}_scale_{scale}_real", np.real(coeffs[idx])),
-                    pl.Series(f"{method}_scale_{scale}_imag", np.imag(coeffs[idx])),
-                ]
-            )
-        return pl_group.with_columns(new_series)
-
-    output_schema = {
-        **sorted_frame.schema,
-        **{f"{method}_scale_{scale}_real": pl.Float64 for scale in scales},
-        **{f"{method}_scale_{scale}_imag": pl.Float64 for scale in scales},
-    }
-
-    if resolved_groups:
-        transformed = (
-            sorted_frame.group_by(resolved_groups, maintain_order=True)
-            .map_groups(apply_wavelet, schema=output_schema)
-            .sort(sort_keys)
-        )
-    else:
-        transformed = apply_wavelet(sorted_frame)
-
-    transformed = transformed.sort(row_col)
-
-    if generated:
-        transformed = transformed.drop(row_col)
-
-    return transformed
+        pass
+    pass
 
 
 def morlet_wavelet(t, fc=1.0):
     """Compute the Complex Morlet wavelet"""
-    return np.exp(1j * np.pi * fc * t) * np.exp(-(t**2) / 2)
+    pass
 
 
 def bump_wavelet(t, w=1.0):
     """Compute the Bump wavelet."""
-    s1 = np.exp(-1 / (1 - t**2))
-    s2 = np.exp(-(w**2) / (w**2 - t**2))
-    condition = np.logical_and(t > -1, t < 1)
-    return np.where(condition, s1 * s2, 0)
+    pass
 
 
 def analytic_morlet_wavelet(t, w=5.0):
     """Compute the Analytic Morlet wavelet."""
-    s1 = np.exp(2j * np.pi * w * t)
-    s2 = np.exp(-(t**2) / 2)
-    return s1 * s2
+    pass

@@ -24,32 +24,7 @@ def _ensure_pomegranate_available():
     Lazily import pomegranate regardless of major version.
     Returns (HiddenMarkovModel, NormalDistribution) classes.
     """
-    global _POMEGRANATE_MODEL, _POMEGRANATE_DIST
-    if _POMEGRANATE_MODEL is not None and _POMEGRANATE_DIST is not None:
-        return _POMEGRANATE_MODEL, _POMEGRANATE_DIST
-
-    last_error = None
-
-    try:
-        from pomegranate import HiddenMarkovModel as legacy_hmm
-        from pomegranate import NormalDistribution as legacy_norm
-
-        _POMEGRANATE_MODEL = legacy_hmm
-        _POMEGRANATE_DIST = legacy_norm
-    except ImportError as exc:
-        last_error = exc
-
-    if _POMEGRANATE_MODEL is None or _POMEGRANATE_DIST is None:
-        message = (
-            "The 'pomegranate' backend requires the legacy pomegranate>=0.14,<1.0 "
-            "release which exposes HiddenMarkovModel/NormalDistribution. "
-            "Install it with `pip install 'pomegranate<1.0'`."
-        )
-        if last_error is not None:
-            message += f" Original error: {last_error}"
-        raise ImportError(message)
-
-    return _POMEGRANATE_MODEL, _POMEGRANATE_DIST
+    pass
 
 
 try:  # Optional cudf dependency
@@ -243,114 +218,7 @@ def augment_regime_detection(
     )
     ```
     """
-
-    method_lc = method.lower()
-    if method_lc != "hmm":
-        raise ValueError("Only 'hmm' method is currently supported.")
-
-    backend = hmm_backend.lower()
-    if backend not in {"auto", "pomegranate", "hmmlearn"}:
-        raise ValueError(
-            "Invalid `hmm_backend`. Choose from {'auto', 'pomegranate', 'hmmlearn'}."
-        )
-    if backend == "auto":
-        if HMMLEARN_AVAILABLE:
-            backend = "hmmlearn"
-        elif POMEGRANATE_AVAILABLE:
-            backend = "pomegranate"
-        else:
-            backend = "hmmlearn"
-
-    if backend == "pomegranate" and not POMEGRANATE_AVAILABLE:
-        raise ImportError(
-            "The 'pomegranate' backend requires the 'pomegranate' package. "
-            "Install it with `pip install pomegranate`."
-        )
-    if backend == "hmmlearn" and not HMMLEARN_AVAILABLE:
-        raise ImportError(
-            "The 'hmmlearn' backend requires the 'hmmlearn' package. "
-            "Install it with `pip install hmmlearn`."
-        )
-
-    check_dataframe_or_groupby(data)
-    date_column, close_columns = resolve_shift_columns(
-        data,
-        date_column=date_column,
-        value_column=close_column,
-        require_numeric=True,
-    )
-    if len(close_columns) != 1:
-        raise ValueError("`close_column` selector must resolve to exactly one column.")
-    close_column = close_columns[0]
-
-    if n_regimes < 2:
-        raise ValueError("n_regimes must be at least 2.")
-    if step_size < 1:
-        raise ValueError("step_size must be at least 1.")
-
-    windows = _normalize_windows(window)
-
-    engine_resolved = normalize_engine(engine, data)
-
-    if engine_resolved == "cudf":
-        warnings.warn(
-            "augment_regime_detection does not yet offer a native cudf implementation. Falling back to pandas.",
-            RuntimeWarning,
-            stacklevel=2,
-        )
-        conversion_engine = "pandas"
-    else:
-        conversion_engine = engine_resolved
-    conversion: FrameConversion = convert_to_engine(data, conversion_engine)
-    prepared_data = conversion.data
-
-    if reduce_memory and conversion_engine == "pandas":
-        prepared_data = reduce_memory_usage(prepared_data)
-    elif reduce_memory and conversion_engine in ("polars", "cudf"):
-        warnings.warn(
-            "`reduce_memory=True` is only supported for pandas data.",
-            RuntimeWarning,
-            stacklevel=2,
-        )
-
-    if conversion_engine == "pandas":
-        sorted_data, _ = sort_dataframe(
-            prepared_data, date_column, keep_grouped_df=True
-        )
-        result = _augment_regime_detection_pandas(
-            data=sorted_data,
-            date_column=date_column,
-            close_column=close_column,
-            windows=windows,
-            n_regimes=n_regimes,
-            step_size=step_size,
-            n_iter=n_iter,
-            hmm_backend=backend,
-            n_jobs=n_jobs,
-        )
-        if reduce_memory:
-            result = reduce_memory_usage(result)
-    else:
-        result = _augment_regime_detection_polars(
-            data=prepared_data,
-            date_column=date_column,
-            close_column=close_column,
-            windows=windows,
-            n_regimes=n_regimes,
-            step_size=step_size,
-            n_iter=n_iter,
-            hmm_backend=backend,
-            n_jobs=n_jobs,
-            group_columns=conversion.group_columns,
-            row_id_column=conversion.row_id_column,
-        )
-
-    restored = restore_output_type(result, conversion)
-
-    if isinstance(restored, pd.DataFrame):
-        return restored.sort_index()
-
-    return restored
+    pass
 
 
 def _augment_regime_detection_pandas(
@@ -365,111 +233,9 @@ def _augment_regime_detection_pandas(
     n_jobs: int,
 ) -> pd.DataFrame:
     """Pandas implementation of regime detection using HMM."""
-
-    if isinstance(data, pd.DataFrame):
-        df = data.copy(deep=False)
-        group_names = None
-    elif isinstance(data, pd.core.groupby.generic.DataFrameGroupBy):
-        group_names = data.grouper.names
-        df = resolve_pandas_groupby_frame(data).copy(deep=False)
-
-    col = close_column
-
-    if group_names:
-        prev = df.groupby(group_names)[col].shift(1)
-    else:
-        prev = df[col].shift(1)
-    df["log_returns"] = np.log(df[col] / prev)
-    df["log_returns"] = df["log_returns"].replace([np.inf, -np.inf], np.nan)
-
-    pome_model_cls = None
-    pome_dist_cls = None
-    if hmm_backend == "pomegranate":
-        pome_model_cls, pome_dist_cls = _ensure_pomegranate_available()
-
     def detect_regimes(series, window, n_regimes, step_size, n_iter):
-        values = series.to_numpy(dtype=float, copy=False)
-        n = len(values)
-        regimes = np.full(n, np.nan, dtype=float)
-        min_obs = max(window // 2, n_regimes * 10)
-        hmm_model = None
-        hmm_params = None
-        pom_model = None
-        for i in range(window - 1, n, step_size):
-            start = max(0, i - window + 1)
-            window_values = values[start : i + 1]
-            finite_idx = np.where(np.isfinite(window_values))[0]
-            if len(finite_idx) < min_obs:
-                continue
-            window_data = window_values[finite_idx].reshape(-1, 1)
-            try:
-                if hmm_backend == "hmmlearn":
-                    if hmm_model is None:
-                        hmm_model = GaussianHMM(
-                            n_components=n_regimes,
-                            covariance_type="diag",
-                            n_iter=n_iter,
-                            tol=1e-3,
-                        )
-                    if hmm_params is not None:
-                        hmm_model.startprob_ = hmm_params["startprob"]
-                        hmm_model.transmat_ = hmm_params["transmat"]
-                        hmm_model.means_ = hmm_params["means"]
-                        hmm_model.covars_ = hmm_params["covars"]
-                        hmm_model.init_params = ""
-                    else:
-                        hmm_model.init_params = "stmc"
-                    hmm_model.fit(window_data)
-                    predicted = hmm_model.predict(window_data)
-                    hmm_params = {
-                        "startprob": hmm_model.startprob_.copy(),
-                        "transmat": hmm_model.transmat_.copy(),
-                        "means": hmm_model.means_.copy(),
-                        "covars": hmm_model.covars_.copy(),
-                    }
-                else:
-                    sequence = window_data.ravel().tolist()
-                    if pom_model is None:
-                        pom_model = pome_model_cls.from_samples(
-                            pome_dist_cls,
-                            n_components=n_regimes,
-                            X=[sequence],
-                            algorithm="baum-welch",
-                            max_iterations=n_iter,
-                            stop_threshold=1e-3,
-                        )
-                    else:
-                        pom_model.fit(
-                            [sequence],
-                            algorithm="baum-welch",
-                            max_iterations=n_iter,
-                            stop_threshold=1e-3,
-                        )
-                    predicted = np.asarray(pom_model.predict(sequence))
-            except ValueError:
-                continue
-            tail_len = min(step_size, len(finite_idx))
-            target_positions = finite_idx[-tail_len:] + start
-            regimes[target_positions] = predicted[-tail_len:]
-        return pd.Series(regimes, index=series.index)
-
-    for window in windows:
-        if group_names:
-            # Parallelize across groups
-            results = Parallel(n_jobs=n_jobs)(
-                delayed(detect_regimes)(
-                    group["log_returns"], window, n_regimes, step_size, n_iter
-                )
-                for _, group in df.groupby(group_names)
-            )
-            df[f"{col}_regime_{window}"] = pd.concat(results).reindex(df.index)
-        else:
-            df[f"{col}_regime_{window}"] = detect_regimes(
-                df["log_returns"], window, n_regimes, step_size, n_iter
-            )
-
-    df = df.drop(columns=["log_returns"])
-    return df
+        pass
+    pass
 
 
 def _augment_regime_detection_polars(
@@ -486,61 +252,8 @@ def _augment_regime_detection_polars(
     row_id_column: Optional[str],
 ) -> pl.DataFrame:
     """Polars implementation of regime detection using HMM (via pandas)."""
-
-    resolved_groups = resolve_polars_group_columns(data, group_columns)
-    frame = data.df if isinstance(data, pl.dataframe.group_by.GroupBy) else data
-    frame_with_id, row_col, generated = ensure_row_id_column(frame, row_id_column)
-
-    sort_keys = list(resolved_groups)
-    sort_keys.append(date_column)
-    sorted_frame = frame_with_id.sort(sort_keys)
-
-    pandas_df = sorted_frame.to_pandas()
-
-    if resolved_groups:
-        pandas_groupby = pandas_df.groupby(resolved_groups, sort=False)
-        result_pd = _augment_regime_detection_pandas(
-            data=pandas_groupby,
-            date_column=date_column,
-            close_column=close_column,
-            windows=windows,
-            n_regimes=n_regimes,
-            step_size=step_size,
-            n_iter=n_iter,
-            hmm_backend=hmm_backend,
-            n_jobs=n_jobs,
-        )
-    else:
-        result_pd = _augment_regime_detection_pandas(
-            data=pandas_df,
-            date_column=date_column,
-            close_column=close_column,
-            windows=windows,
-            n_regimes=n_regimes,
-            step_size=step_size,
-            n_iter=n_iter,
-            hmm_backend=hmm_backend,
-            n_jobs=n_jobs,
-        )
-
-    result = pl.from_pandas(result_pd).sort(row_col)
-
-    if generated:
-        result = result.drop(row_col)
-
-    return result
+    pass
 
 
 def _normalize_windows(window: Union[int, Tuple[int, int], List[int]]) -> List[int]:
-    if isinstance(window, int):
-        return [window]
-    if isinstance(window, tuple):
-        if len(window) != 2:
-            raise ValueError("Expected tuple of length 2 for `window`.")
-        start, end = window
-        return list(range(start, end + 1))
-    if isinstance(window, list):
-        return [int(w) for w in window]
-    raise TypeError(
-        f"Invalid window specification: type: {type(window)}. Please use int, tuple, or list."
-    )
+    pass

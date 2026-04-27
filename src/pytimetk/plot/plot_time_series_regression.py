@@ -19,32 +19,14 @@ VALUE_COLUMN = "__regression_value__"
 
 
 def _to_pandas(data: Union[pd.DataFrame, pd.core.groupby.generic.DataFrameGroupBy]):
-    if pl is not None:
-        pl_groupby_cls = getattr(pl.dataframe.group_by, "GroupBy", None)
-        if isinstance(data, pl.DataFrame):
-            return data.to_pandas()
-        if pl_groupby_cls is not None and isinstance(data, pl_groupby_cls):  # pragma: no cover - optional path
-            return data.to_pandas()  # type: ignore[attr-defined]
-    return data
+    pass
 
 
 def _resolve_date_column(
     data: Union[pd.DataFrame, pd.core.groupby.generic.DataFrameGroupBy],
     selector: Union[str, ColumnSelector],
 ) -> str:
-    if isinstance(selector, str):
-        return selector
-    resolved = resolve_column_selection(
-        resolve_pandas_groupby_frame(data)
-        if isinstance(data, pd.core.groupby.generic.DataFrameGroupBy)
-        else data,
-        selector,
-        allow_none=False,
-        require_match=True,
-    )
-    if len(resolved) != 1:
-        raise ValueError("`date_column` selector must resolve to exactly one column.")
-    return resolved[0]
+    pass
 
 
 def _prepare_long_frame(
@@ -54,19 +36,7 @@ def _prepare_long_frame(
     fitted_values: pd.Series,
     group_columns: List[str],
 ) -> pd.DataFrame:
-    base_cols = [col for col in group_columns if col in df.columns]
-    cols = [date_column] + base_cols
-
-    actual = df[cols].copy()
-    actual[SERIES_COLUMN] = "observed"
-    actual[VALUE_COLUMN] = pd.to_numeric(df[response_column], errors="coerce")
-
-    fitted = df[cols].copy()
-    fitted[SERIES_COLUMN] = "fitted"
-    fitted[VALUE_COLUMN] = pd.to_numeric(fitted_values, errors="coerce")
-
-    combined = pd.concat([actual, fitted], ignore_index=True)
-    return combined.dropna(subset=[date_column])
+    pass
 
 
 def _fit_group(
@@ -78,18 +48,7 @@ def _fit_group(
     model_kwargs: Dict[str, Any],
     group_columns: List[str],
 ) -> pd.DataFrame:
-    model = smf.ols(formula=formula, data=df, **model_kwargs).fit()
-    if show_summary:
-        if group_label:
-            print(f"\nSummary for Group: {group_label}\n{'-' * 40}")
-        else:
-            print("\nSummary\n" + "-" * 40)
-        print(model.summary())
-        print("-" * 40)
-
-    fitted = model.predict(df)
-    response_column = model.model.endog_names
-    return _prepare_long_frame(df, date_column, response_column, fitted, group_columns)
+    pass
 
 
 @pf.register_groupby_method
@@ -177,92 +136,4 @@ def plot_time_series_regression(
     fig_features
     ```
     """
-
-    if not isinstance(formula, str) or "~" not in formula:
-        raise ValueError("`formula` must be a Patsy-style string such as 'y ~ x1 + x2'.")
-
-    data = _to_pandas(data)
-
-    if isinstance(data, pd.DataFrame):
-        frame = data.copy()
-        group_columns: List[str] = []
-    elif isinstance(data, pd.core.groupby.generic.DataFrameGroupBy):
-        group_columns = [col for col in data.grouper.names if col is not None]
-        frame = resolve_pandas_groupby_frame(data).copy()
-    else:
-        raise TypeError("`data` must be a pandas DataFrame or GroupBy.")
-
-    if frame.empty:
-        raise ValueError("`data` contains no rows.")
-
-    date_column_name = _resolve_date_column(frame if not group_columns else frame, date_column)
-    frame[date_column_name] = pd.to_datetime(frame[date_column_name], errors="coerce")
-    frame = frame.dropna(subset=[date_column_name])
-    if frame.empty:
-        raise ValueError("No valid rows remain after coercing `date_column` to datetime.")
-
-    model_kwargs = model_kwargs.copy() if model_kwargs is not None else {}
-    model_kwargs.setdefault("eval_env", 2)
-
-    result_frames: List[pd.DataFrame] = []
-
-    if group_columns:
-        grouped = frame.groupby(group_columns, dropna=False, sort=False)
-        for key, group_df in grouped:
-            if group_df.empty:
-                continue
-            label = ", ".join(f"{col}={val}" for col, val in zip(group_columns, key if isinstance(key, tuple) else (key,)))
-            result_frames.append(
-                _fit_group(
-                    group_df,
-                    date_column_name,
-                    formula,
-                    show_summary,
-                    label,
-                    model_kwargs,
-                    group_columns,
-                )
-            )
-    else:
-        result_frames.append(
-            _fit_group(
-                frame,
-                date_column_name,
-                formula,
-                show_summary,
-                None,
-                model_kwargs,
-                [],
-            )
-        )
-
-    if not result_frames:
-        raise ValueError("Unable to compute regression fits for the supplied data.")
-
-    plot_data = pd.concat(result_frames, ignore_index=True)
-
-    plot_kwargs = plot_kwargs.copy()
-    plot_kwargs.setdefault("legend_show", True)
-    plot_kwargs.setdefault("smooth", False)
-
-    reserved = {"data", "date_column", "value_column", "color_column"}
-    conflicts = reserved.intersection(plot_kwargs.keys())
-    if conflicts:
-        conflict_list = ", ".join(sorted(conflicts))
-        raise ValueError(
-            f"The following plot keyword arguments are managed internally and "
-            f"cannot be overridden: {conflict_list}"
-        )
-
-    plot_input = plot_data if not group_columns else plot_data.groupby(group_columns)
-
-    from pytimetk.plot.plot_timeseries import plot_timeseries as _plot_timeseries
-
-    fig = _plot_timeseries(
-        data=plot_input,
-        date_column=date_column_name,
-        value_column=VALUE_COLUMN,
-        color_column=SERIES_COLUMN,
-        **plot_kwargs,
-    )
-    return fig
+    pass

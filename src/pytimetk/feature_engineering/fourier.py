@@ -138,62 +138,17 @@ def augment_fourier(
     ```
 
     """
-
-    check_dataframe_or_groupby(data)
-    check_date_column(data, date_column)
-
-    engine_resolved = normalize_engine(engine, data)
-
-    conversion: FrameConversion = convert_to_engine(data, "pandas")
-    prepared_data = conversion.data
-
-    if reduce_memory and engine_resolved == "polars":
-        warnings.warn(
-            "`reduce_memory=True` is only supported for pandas data.",
-            RuntimeWarning,
-            stacklevel=2,
-        )
-
-    if isinstance(periods, int):
-        periods = [periods]
-    elif isinstance(periods, tuple):
-        periods = list(range(periods[0], periods[1] + 1))
-    elif not isinstance(periods, list):
-        raise TypeError(
-            f"Invalid periods specification: type: {type(periods)}. Please use int, tuple, or list."
-        )
-
-    periods = [int(p) for p in periods]
-
-    prepared_data, _ = sort_dataframe(prepared_data, date_column, keep_grouped_df=True)
-
-    result = _augment_fourier_pandas(
-        prepared_data,
-        date_column,
-        periods,
-        max_order,
-    )
-
-    if reduce_memory and engine_resolved == "pandas":
-        result = reduce_memory_usage(result)
-
-    restored = restore_output_type(result, conversion)
-
-    if isinstance(restored, pd.DataFrame):
-        return restored
-
-    return restored
+    pass
 
 
 def calc_fourier(x, period, type: str, K=1):
-    angle = 2 * np.pi * (K * x / period)
-    return np.sin(angle) if type == "sin" else np.cos(angle)
+    pass
 
 
 def date_to_seq_scale_factor(
     data: pd.DataFrame, date_var: str, engine: str = "pandas"
 ) -> pd.DataFrame:
-    return ts_summary(data, date_column=date_var, engine=engine)["diff_median"]
+    pass
 
 
 def _augment_fourier_pandas(
@@ -202,28 +157,7 @@ def _augment_fourier_pandas(
     periods: List[int],
     max_order: int,
 ) -> pd.DataFrame:
-    if isinstance(prepared_data, pd.core.groupby.generic.DataFrameGroupBy):
-        base_df = resolve_pandas_groupby_frame(prepared_data)
-        pieces = []
-        for _, group in prepared_data:
-            pieces.append(
-                _compute_fourier_columns_for_group(
-                    group, date_column, periods, max_order
-                )
-            )
-        new_cols = pd.concat(pieces) if pieces else pd.DataFrame(index=base_df.index)
-    else:
-        base_df = prepared_data
-        new_cols = _compute_fourier_columns_for_group(
-            base_df, date_column, periods, max_order
-        )
-
-    if new_cols.empty:
-        return base_df.copy()
-
-    result_df = base_df.copy()
-    result_df[new_cols.columns] = new_cols.reindex(base_df.index)
-    return result_df
+    pass
 
 
 def _compute_fourier_columns_for_group(
@@ -232,13 +166,7 @@ def _compute_fourier_columns_for_group(
     periods: List[int],
     max_order: int,
 ) -> pd.DataFrame:
-    if frame.empty:
-        return pd.DataFrame(index=frame.index)
-    frame_sorted = frame.sort_values(date_column)
-    new_cols_sorted = _compute_fourier_columns(
-        frame_sorted, date_column, periods, max_order
-    )
-    return new_cols_sorted.reindex(frame.index)
+    pass
 
 
 def _compute_fourier_columns(
@@ -247,36 +175,4 @@ def _compute_fourier_columns(
     periods: List[int],
     max_order: int,
 ) -> pd.DataFrame:
-    if frame.empty:
-        return pd.DataFrame(index=frame.index)
-
-    scale_factor_series = date_to_seq_scale_factor(frame, date_column)
-    if scale_factor_series.empty:
-        raise ValueError(
-            "Unable to compute a scale factor for Fourier features. Check that the input data contains more than one observation."
-        )
-
-    scale_factor = scale_factor_series.iloc[0].total_seconds()
-    if scale_factor == 0:
-        raise ValueError(
-            "Time difference between observations is zero. Try arranging data to have a positive time difference between observations. If working with time series groups, arrange by groups first, then date."
-        )
-
-    min_date = frame[date_column].min()
-    time_steps = (frame[date_column] - min_date).dt.total_seconds() / scale_factor
-
-    data = {}
-    for type_val in ("sin", "cos"):
-        for K_val in range(1, max_order + 1):
-            for period_val in periods:
-                if period_val == 0:
-                    raise ValueError("`periods` entries must be non-zero integers.")
-                col_name = f"{date_column}_{type_val}_{K_val}_{period_val}"
-                data[col_name] = calc_fourier(
-                    x=time_steps,
-                    period=period_val,
-                    type=type_val,
-                    K=K_val,
-                )
-
-    return pd.DataFrame(data, index=frame.index)
+    pass

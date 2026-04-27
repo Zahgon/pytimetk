@@ -67,14 +67,7 @@ def progress_apply(
     ```
 
     """
-    return parallel_apply(
-        data=data,
-        func=func,
-        show_progress=show_progress,
-        threads=1,
-        desc=desc,
-        **kwargs,
-    )
+    pass
 
 
 @pf.register_groupby_method
@@ -226,71 +219,9 @@ def parallel_apply(
 
     ```
     """
-
-    if not isinstance(data, pd.core.groupby.generic.DataFrameGroupBy):
-        raise TypeError("`data` is not a Pandas DataFrameGroupBy object.")
-
-    group_names = list(_extract_pandas_group_columns(data))
-    include_groups = pandas_groupby_default_includes_groups(data)
-
-    groups = [
-        (name, _prepare_group_for_apply(group, group_names, include_groups))
-        for name, group in data
-    ]
-    if not groups:
-        return pd.DataFrame()
-
-    threads_resolved = get_threads(threads)
-
     def _apply_local(group_df):
-        return func(group_df, **kwargs)
-
-    if threads_resolved == 1:
-        iterator = conditional_tqdm(
-            (group for _, group in groups),
-            total=len(groups),
-            display=show_progress,
-            desc=desc,
-        )
-        results = [_apply_local(group) for group in iterator]
-    else:
-        args_list = [
-            (func, kwargs, group) for _, group in groups
-        ]
-        try:
-            results = run_ray_tasks(
-                _parallel_apply_worker,
-                args_list,
-                num_cpus=threads_resolved,
-                desc=desc,
-                show_progress=show_progress,
-            )
-        except ImportError:
-            warnings.warn(
-                "Ray is not installed; falling back to sequential apply. "
-                "Install `ray` or set `threads=1` to silence this warning.",
-                RuntimeWarning,
-                stacklevel=2,
-            )
-            iterator = conditional_tqdm(
-            (group for _, group in groups),
-            total=len(groups),
-            display=show_progress,
-            desc=desc,
-            )
-            results = [_apply_local(group) for group in iterator]
-
-    ordered_names = [name for name, _ in groups]
-    first_result = results[0]
-
-    if isinstance(first_result, (pd.DataFrame, pd.Series)):
-        return pd.concat(results, keys=ordered_names, names=group_names)
-
-    return pd.Series(
-        results,
-        index=_build_group_index(ordered_names, group_names),
-        name=None,
-    )
+        pass
+    pass
 
 
 # Utility functions
@@ -298,38 +229,19 @@ def parallel_apply(
 
 
 def get_threads(threads: int = None):
-    if threads is None:
-        threads = cpu_count()
-    if threads == -1:
-        threads = cpu_count()
-    return threads
+    pass
 
 
 def conditional_tqdm(iterable: Iterable, display: bool = True, **kwargs):
-    tqdm = get_tqdm()
-    if display:
-        return tqdm(iterable, **kwargs)
-    else:
-        return iterable
+    pass
 
 
 def get_tqdm():
-    try:
-        # Check if we are in a Jupyter environment
-        ipy_instance = get_ipython().__class__.__name__
-        if (
-            "ZMQ" in ipy_instance or "Shell" in ipy_instance
-        ):  # Jupyter Notebook or Jupyter Lab
-            from tqdm.notebook import tqdm
-        else:
-            from tqdm import tqdm
-    except (NameError, ImportError):  # Not in an IPython environment
-        from tqdm import tqdm
-    return tqdm
+    pass
 
 
 def _parallel_apply_worker(func: Callable, kwargs: dict, group_df: pd.DataFrame):
-    return func(group_df, **kwargs)
+    pass
 
 
 def _prepare_group_for_apply(
@@ -337,21 +249,8 @@ def _prepare_group_for_apply(
     group_names: List[str],
     include_groups: bool,
 ) -> pd.DataFrame:
-    if include_groups:
-        return group
-    return group.drop(columns=group_names, errors="ignore")
+    pass
 
 
 def _build_group_index(group_names: List, index_names: List[str]) -> pd.Index:
-    if len(index_names) == 1:
-        values = [
-            name[0] if isinstance(name, tuple) and len(name) == 1 else name
-            for name in group_names
-        ]
-        return pd.Index(values, name=index_names[0])
-
-    tuples = [
-        name if isinstance(name, tuple) else (name,)
-        for name in group_names
-    ]
-    return pd.MultiIndex.from_tuples(tuples, names=index_names)
+    pass

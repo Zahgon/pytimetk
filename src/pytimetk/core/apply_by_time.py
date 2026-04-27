@@ -30,25 +30,7 @@ def _resolve_selector_frame(
         "cudf.DataFrame",
     ],
 ) -> pd.DataFrame:
-    if isinstance(data, pd.core.groupby.generic.DataFrameGroupBy):
-        return resolve_pandas_groupby_frame(data).copy()
-    if isinstance(data, pd.DataFrame):
-        return data.copy()
-    if isinstance(data, pl.dataframe.group_by.GroupBy):
-        base = getattr(data, "df", None)
-        if base is None:
-            raise TypeError(
-                "Unable to resolve columns from the supplied polars GroupBy for selector resolution."
-            )
-        return base.to_pandas()
-    if isinstance(data, pl.DataFrame):
-        return data.to_pandas()
-    if hasattr(data, "to_pandas"):
-        return data.to_pandas()
-    raise TypeError(
-        "Column selectors currently require pandas or polars data. Convert to one of these "
-        "before calling apply_by_time."
-    )
+    pass
 
 
 @pf.register_groupby_method
@@ -216,92 +198,7 @@ def apply_by_time(
     )
     ```
     """
-
-    # Run common checks
-    check_dataframe_or_groupby(data)
-    selector_frame = _resolve_selector_frame(data)
-    if isinstance(date_column, str):
-        resolved_date_column = date_column
-    else:
-        resolved = resolve_column_selection(
-            selector_frame, date_column, allow_none=False, require_match=True
-        )
-        if len(resolved) != 1:
-            raise ValueError(
-                f"`date_column` selector must resolve to exactly one column (resolved={resolved})."
-            )
-        resolved_date_column = resolved[0]
-
-    date_column = resolved_date_column
-    check_date_column(selector_frame, date_column)
-
-    engine_resolved = normalize_engine(engine, data)
-
-    if engine_resolved == "cudf":
-        warnings.warn(
-            "apply_by_time currently falls back to the pandas implementation when used with cudf data.",
-            RuntimeWarning,
-            stacklevel=2,
-        )
-        engine_resolved = "pandas"
-
-    if engine_resolved == "pandas":
-        conversion = convert_to_engine(data, "pandas")
-        prepared = conversion.data
-        result = _apply_by_time_pandas(
-            prepared,
-            date_column=date_column,
-            freq=freq,
-            wide_format=wide_format,
-            fillna=fillna,
-            reduce_memory=reduce_memory,
-            named_funcs=named_funcs,
-        )
-        return restore_output_type(result, conversion)
-
-    if engine_resolved == "polars":
-        conversion = convert_to_engine(data, "polars")
-        prepared = conversion.data
-
-        if wide_format:
-            pandas_prepared = conversion_to_pandas(conversion)
-            result_pd = _apply_by_time_pandas(
-                pandas_prepared,
-                date_column=date_column,
-                freq=freq,
-                wide_format=wide_format,
-                fillna=fillna,
-                reduce_memory=reduce_memory,
-                named_funcs=named_funcs,
-            )
-            result_pl = pl.from_pandas(result_pd)
-            return restore_output_type(result_pl, conversion)
-
-        result_polars = _apply_by_time_polars(
-            prepared,
-            date_column=date_column,
-            freq=freq,
-            wide_format=wide_format,
-            fillna=fillna,
-            reduce_memory=reduce_memory,
-            named_funcs=named_funcs,
-            row_id_column=conversion.row_id_column,
-            group_columns=conversion.group_columns,
-        )
-        return restore_output_type(result_polars, conversion)
-
-    conversion = convert_to_engine(data, "pandas")
-    prepared = conversion.data
-    result = _apply_by_time_pandas(
-        prepared,
-        date_column=date_column,
-        freq=freq,
-        wide_format=wide_format,
-        fillna=fillna,
-        reduce_memory=reduce_memory,
-        named_funcs=named_funcs,
-    )
-    return restore_output_type(result, conversion)
+    pass
 
 
 def _apply_by_time_pandas(
@@ -314,46 +211,9 @@ def _apply_by_time_pandas(
     reduce_memory: bool,
     named_funcs: Dict[str, callable],
 ) -> pd.DataFrame:
-    data = prepared
-    freq = normalize_frequency_alias(freq)
-
-    if reduce_memory:
-        if isinstance(data, pd.DataFrame):
-            data = reduce_memory_usage(data)
-        else:
-            data = resolve_pandas_groupby_frame(data).copy()
-            data = reduce_memory_usage(data)
-            data = data.groupby(prepared.grouper.names)
-
-    group_names = None
-    if isinstance(data, pd.DataFrame):
-        data = data.set_index(date_column)
-    else:
-        group_names = list(data.grouper.names)
-        if date_column not in group_names:
-            data = resolve_pandas_groupby_frame(data).set_index(date_column).groupby(group_names)
-
-    grouped = data.resample(rule=freq)
-
     def custom_agg(group):
-        agg_values = {}
-        for name, func in named_funcs.items():
-            agg_values[name] = func(group)
-        return pd.Series(agg_values)
-
-    result = grouped.apply(custom_agg)
-
-    if wide_format and group_names is not None:
-        result = result.unstack(group_names)
-
-    result = result.fillna(fillna)
-    result = flatten_multiindex_column_names(result)
-    result.reset_index(inplace=True)
-
-    if reduce_memory:
-        result = reduce_memory_usage(result)
-
-    return result
+        pass
+    pass
 
 
 def _apply_by_time_polars(
@@ -368,62 +228,4 @@ def _apply_by_time_polars(
     row_id_column: Optional[str],
     group_columns: Optional[Sequence[str]],
 ) -> pl.DataFrame:
-    resolved_groups = resolve_polars_group_columns(prepared, group_columns)
-    frame = prepared.df if isinstance(prepared, pl.dataframe.group_by.GroupBy) else prepared
-
-    sort_keys = list(resolved_groups) + [date_column] if resolved_groups else [date_column]
-    frame_sorted = frame.sort(sort_keys)
-
-    partitions = (
-        frame_sorted.partition_by(resolved_groups, maintain_order=True)
-        if resolved_groups
-        else [frame_sorted]
-    )
-
-    if not partitions:
-        return frame_sorted
-
-    results: List[pl.DataFrame] = []
-    for part in partitions:
-        part_to_convert = (
-            part.drop(row_id_column)
-            if row_id_column and row_id_column in part.columns
-            else part
-        )
-        pandas_part = part_to_convert.to_pandas()
-        if resolved_groups:
-            pandas_input = pandas_part.groupby(resolved_groups, sort=False)
-        else:
-            pandas_input = pandas_part
-
-        pandas_result = _apply_by_time_pandas(
-            pandas_input,
-            date_column=date_column,
-            freq=freq,
-            wide_format=wide_format,
-            fillna=fillna,
-            reduce_memory=reduce_memory,
-            named_funcs=named_funcs,
-        )
-        if resolved_groups:
-            for col in resolved_groups:
-                key_value = part.select(pl.col(col).first()).item()
-                pandas_result[col] = key_value
-            # move group columns before date for consistency
-            ordered_cols = list(resolved_groups) + [
-                col for col in pandas_result.columns if col not in resolved_groups
-            ]
-            pandas_result = pandas_result[ordered_cols]
-        results.append(pl.from_pandas(pandas_result))
-
-    combined = (
-        pl.concat(results, how="vertical_relaxed") if len(results) > 1 else results[0]
-    )
-
-    sort_cols: List[str] = list(resolved_groups)
-    if date_column in combined.columns:
-        sort_cols.append(date_column)
-    if sort_cols:
-        combined = combined.sort(sort_cols)
-
-    return combined
+    pass

@@ -143,121 +143,7 @@ def augment_atr(
     )
     ```
     """
-
-    # Run common checks
-    check_dataframe_or_groupby(data)
-    date_column, close_cols = resolve_shift_columns(
-        data,
-        date_column=date_column,
-        value_column=close_column,
-        require_numeric=True,
-    )
-    _, high_cols = resolve_shift_columns(
-        data,
-        date_column=date_column,
-        value_column=high_column,
-        require_numeric=True,
-    )
-    _, low_cols = resolve_shift_columns(
-        data,
-        date_column=date_column,
-        value_column=low_column,
-        require_numeric=True,
-    )
-
-    if len(close_cols) != 1 or len(high_cols) != 1 or len(low_cols) != 1:
-        raise ValueError(
-            "`high_column`, `low_column`, and `close_column` selectors must resolve to exactly one column."
-        )
-
-    close_column = close_cols[0]
-    high_column = high_cols[0]
-    low_column = low_cols[0]
-
-    period_list = _normalize_periods(periods)
-
-    engine_resolved = normalize_engine(engine, data)
-
-    if engine_resolved == "cudf" and cudf is None:  # pragma: no cover - optional dependency
-        raise ImportError(
-            "cudf is required for engine='cudf', but it is not installed."
-        )
-
-    conversion_engine = engine_resolved
-    conversion: FrameConversion = convert_to_engine(data, conversion_engine)
-    prepared_data = conversion.data
-
-    if reduce_memory and conversion_engine == "pandas":
-        prepared_data = reduce_memory_usage(prepared_data)
-    elif reduce_memory and conversion_engine in ("polars", "cudf"):
-        warnings.warn(
-            "`reduce_memory=True` is only supported for pandas data.",
-            RuntimeWarning,
-            stacklevel=2,
-        )
-
-    if engine_resolved == "pandas":
-        sorted_data, _ = sort_dataframe(
-            prepared_data, date_column, keep_grouped_df=True
-        )
-        result = _augment_atr_pandas(
-            data=sorted_data,
-            high_column=high_column,
-            low_column=low_column,
-            close_column=close_column,
-            periods=period_list,
-            normalize=normalize,
-        )
-        if reduce_memory:
-            result = reduce_memory_usage(result)
-    elif engine_resolved == "cudf":
-        cudf_df = prepared_data.obj if hasattr(prepared_data, "obj") else prepared_data
-        if not isinstance(cudf_df, cudf.DataFrame):
-            warnings.warn(
-                "Unsupported cudf object encountered for augment_atr. Falling back to pandas.",
-                RuntimeWarning,
-                stacklevel=2,
-            )
-            pandas_input = conversion_to_pandas(conversion)
-            result = _augment_atr_pandas(
-                data=pandas_input,
-                high_column=high_column,
-                low_column=low_column,
-                close_column=close_column,
-                periods=period_list,
-                normalize=normalize,
-            )
-        else:
-            result = _augment_atr_cudf_dataframe(
-                cudf_df,
-                date_column=date_column,
-                high_column=high_column,
-                low_column=low_column,
-                close_column=close_column,
-                periods=period_list,
-                normalize=normalize,
-                group_columns=conversion.group_columns,
-                row_id_column=conversion.row_id_column,
-            )
-    else:
-        result = _augment_atr_polars(
-            data=prepared_data,
-            date_column=date_column,
-            high_column=high_column,
-            low_column=low_column,
-            close_column=close_column,
-            periods=period_list,
-            normalize=normalize,
-            group_columns=conversion.group_columns,
-            row_id_column=conversion.row_id_column,
-        )
-
-    restored = restore_output_type(result, conversion)
-
-    if isinstance(restored, pd.DataFrame):
-        return restored.sort_index()
-
-    return restored
+    pass
 
 
 def _augment_atr_pandas(
@@ -269,64 +155,7 @@ def _augment_atr_pandas(
     normalize: bool,
 ) -> pd.DataFrame:
     """Pandas implementation of ATR/NATR calculation."""
-    type_str = "natr" if normalize else "atr"
-
-    if isinstance(data, pd.DataFrame):
-        df = data.copy(deep=False)
-        # True Range calculation as a column
-        df["tr"] = pd.concat(
-            [
-                df[high_column] - df[low_column],
-                (df[high_column] - df[close_column].shift(1)).abs(),
-                (df[low_column] - df[close_column].shift(1)).abs(),
-            ],
-            axis=1,
-        ).max(axis=1)
-
-        for period in periods:
-            atr = df["tr"].rolling(window=period, min_periods=1).mean()
-            if normalize:
-                atr = (atr / df[close_column] * 100).replace(
-                    [float("inf"), -float("inf")], pd.NA
-                )
-            df[f"{close_column}_{type_str}_{period}"] = atr
-
-        df = df.drop(columns=["tr"])
-
-        return df
-
-    if isinstance(data, pd.core.groupby.generic.DataFrameGroupBy):
-        group_names = list(data.grouper.names)
-        df = resolve_pandas_groupby_frame(data).copy(deep=False)
-        # True Range calculation with group-aware shift
-        prev_close = df.groupby(group_names)[close_column].shift(1)
-        df["tr"] = pd.concat(
-            [
-                df[high_column] - df[low_column],
-                (df[high_column] - prev_close).abs(),
-                (df[low_column] - prev_close).abs(),
-            ],
-            axis=1,
-        ).max(axis=1)
-
-        for period in periods:
-            atr = (
-                df.groupby(group_names)["tr"]
-                .rolling(window=period, min_periods=1)
-                .mean()
-                .reset_index(level=0, drop=True)
-            )
-            if normalize:
-                atr = (atr / df[close_column] * 100).replace(
-                    [float("inf"), -float("inf")], pd.NA
-                )
-            df[f"{close_column}_{type_str}_{period}"] = atr
-
-        df = df.drop(columns=["tr"])
-
-        return df
-
-    raise TypeError("Unsupported data type passed to _augment_atr_pandas.")
+    pass
 
 
 def _augment_atr_polars(
@@ -341,64 +170,9 @@ def _augment_atr_polars(
     row_id_column: Optional[str],
 ) -> pl.DataFrame:
     """Polars implementation of ATR/NATR calculation."""
-    type_str = "natr" if normalize else "atr"
-
-    resolved_groups = resolve_polars_group_columns(data, group_columns)
-    frame = data.df if isinstance(data, pl.dataframe.group_by.GroupBy) else data
-    frame_with_id, row_col, generated = ensure_row_id_column(frame, row_id_column)
-
-    sort_keys = list(resolved_groups)
-    sort_keys.append(date_column)
-    sorted_frame = frame_with_id.sort(sort_keys)
-
     def _maybe_over(expr: pl.Expr) -> pl.Expr:
-        if resolved_groups:
-            return expr.over(resolved_groups)
-        return expr
-
-    lazy_frame = sorted_frame.lazy()
-    temp_columns: List[str] = []
-
-    prev_close_alias = "__atr_prev_close"
-    tr_alias = "__atr_tr"
-    temp_columns.extend([prev_close_alias, tr_alias])
-
-    lazy_frame = lazy_frame.with_columns(
-        _maybe_over(pl.col(close_column).shift(1)).alias(prev_close_alias)
-    )
-
-    lazy_frame = lazy_frame.with_columns(
-        pl.max_horizontal(
-            pl.col(high_column) - pl.col(low_column),
-            (pl.col(high_column) - pl.col(prev_close_alias)).abs(),
-            (pl.col(low_column) - pl.col(prev_close_alias)).abs(),
-        ).alias(tr_alias)
-    )
-
-    for period in periods:
-        rolling_kwargs = ensure_polars_rolling_kwargs(
-            {"window_size": period, "min_samples": 1}
-        )
-        atr_expr = _maybe_over(
-            pl.col(tr_alias).rolling_mean(**rolling_kwargs)
-        )
-        if normalize:
-            atr_expr = pl.when(pl.col(close_column) == 0).then(None).otherwise(
-                atr_expr / pl.col(close_column) * 100
-            )
-        lazy_frame = lazy_frame.with_columns(
-            atr_expr.alias(f"{close_column}_{type_str}_{period}")
-        )
-
-    if temp_columns:
-        lazy_frame = lazy_frame.drop(temp_columns)
-
-    result = collect_lazyframe(lazy_frame).sort(row_col)
-
-    if generated:
-        result = result.drop(row_col)
-
-    return result
+        pass
+    pass
 
 
 def _augment_atr_cudf_dataframe(
@@ -413,73 +187,8 @@ def _augment_atr_cudf_dataframe(
     group_columns: Optional[Sequence[str]],
     row_id_column: Optional[str],
 ) -> "cudf.DataFrame":
-    if cudf is None:  # pragma: no cover - optional dependency
-        raise ImportError("cudf is required to execute the cudf atr backend.")
-
-    type_str = "natr" if normalize else "atr"
-
-    sort_cols: List[str] = [date_column]
-    if group_columns:
-        sort_cols = list(group_columns) + sort_cols
-
-    df_sorted = frame.sort_values(sort_cols)
-    df_sorted[high_column] = df_sorted[high_column].astype("float64")
-    df_sorted[low_column] = df_sorted[low_column].astype("float64")
-    df_sorted[close_column] = df_sorted[close_column].astype("float64")
-
-    if group_columns:
-        group_list = list(group_columns)
-        prev_close = (
-            df_sorted.groupby(group_list, sort=False)[close_column].shift(1)
-        )
-    else:
-        group_list = None
-        prev_close = df_sorted[close_column].shift(1)
-
-    tr_candidates = cudf.DataFrame(
-        {
-            "a": df_sorted[high_column] - df_sorted[low_column],
-            "b": (df_sorted[high_column] - prev_close).abs(),
-            "c": (df_sorted[low_column] - prev_close).abs(),
-        }
-    )
-    df_sorted["__atr_tr"] = tr_candidates.max(axis=1)
-
-    for period in periods:
-        if group_list is not None:
-            atr_series = (
-                df_sorted.groupby(group_list, sort=False)["__atr_tr"]
-                .rolling(window=period, min_periods=1)
-                .mean()
-                .reset_index(drop=True)
-            )
-        else:
-            atr_series = df_sorted["__atr_tr"].rolling(window=period, min_periods=1).mean()
-
-        if normalize:
-            atr_series = atr_series.where(df_sorted[close_column] != 0, np.nan)
-            atr_series = atr_series / df_sorted[close_column] * 100
-
-        df_sorted[f"{close_column}_{type_str}_{period}"] = atr_series
-
-    df_sorted = df_sorted.drop(columns=["__atr_tr"])
-
-    if row_id_column and row_id_column in df_sorted.columns:
-        df_sorted = df_sorted.sort_values(row_id_column)
-
-    return df_sorted
+    pass
 
 
 def _normalize_periods(periods: Union[int, Tuple[int, int], List[int]]) -> List[int]:
-    if isinstance(periods, int):
-        return [periods]
-    if isinstance(periods, tuple):
-        if len(periods) != 2:
-            raise ValueError("Expected tuple of length 2 for `periods`.")
-        start, end = periods
-        return list(range(start, end + 1))
-    if isinstance(periods, list):
-        return [int(p) for p in periods]
-    raise TypeError(
-        f"Invalid periods specification: type: {type(periods)}. Please use int, tuple, or list."
-    )
+    pass

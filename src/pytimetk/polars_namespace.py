@@ -129,51 +129,32 @@ _PANDAS_DF_ONLY_FUNCTIONS: Dict[str, PandasReturnFunc] = {
 
 def _make_df_method(func: FinanceFunc) -> Callable[..., pl.DataFrame]:
     @wraps(func)
-    def method(self, *args, **kwargs):
-        kwargs["engine"] = "polars"
-        return func(data=self._df, *args, **kwargs)
-
-    return method
+    def method(*args, **kwargs):
+        pass
 
 
 def _make_lazy_method(func: FinanceFunc) -> Callable[..., pl.LazyFrame]:
     @wraps(func)
-    def method(self, *args, **kwargs):
-        kwargs["engine"] = "polars"
-        return func(data=self._lf, *args, **kwargs)
-
-    return method
+    def method(*args, **kwargs):
+        pass
 
 
 def _make_groupby_method(func: FinanceFunc) -> Callable[..., pl.DataFrame]:
     @wraps(func)
-    def method(self, *args, **kwargs):
-        kwargs["engine"] = "polars"
-        return func(data=self._gb, *args, **kwargs)
-
-    return method
+    def method(*args, **kwargs):
+        pass
 
 
 def _make_df_method_pandas(func: PandasReturnFunc) -> Callable[..., Any]:
     @wraps(func)
-    def method(self, *args, **kwargs):
-        conversion = convert_to_engine(self._df, "pandas")
-        pandas_data = conversion.data
-        if isinstance(pandas_data, pl.DataFrame):
-            pandas_data = pandas_data.to_pandas()
-        return func(pandas_data, *args, **kwargs)
-
-    return method
+    def method(*args, **kwargs):
+        pass
 
 
 def _make_groupby_method_pandas(func: PandasReturnFunc) -> Callable[..., Any]:
     @wraps(func)
-    def method(self, *args, **kwargs):
-        conversion = convert_to_engine(self._gb, "pandas")
-        pandas_groupby = conversion.data
-        return func(pandas_groupby, *args, **kwargs)
-
-    return method
+    def method(*args, **kwargs):
+        pass
 
 
 class TkDataFrameNamespace:
@@ -189,7 +170,7 @@ class TkDataFrameNamespace:
         """
         Return a feature store accessor bound to this DataFrame.
         """
-        return FeatureStoreAccessor(frame=self._df, store=store, store_kwargs=store_kwargs)
+        pass
 
 
 class TkLazyFrameNamespace:
@@ -211,45 +192,20 @@ class _TkGroupByNamespace:
 
 
 def _register_groupby_namespace():
-    groupby_cls = pl.dataframe.group_by.GroupBy
-
     def _tk(self):
-        return _TkGroupByNamespace(self)
-
-    # Attach as a cached property so that each call returns a fresh wrapper.
-    setattr(groupby_cls, "tk", property(_tk))
+        pass
+    pass
 
 
 def register_polars_namespace() -> None:
     """
     Register ``.tk`` namespace methods on polars DataFrame and GroupBy objects.
     """
-    for name, func in _AUGMENT_FUNCTIONS.items():
-        setattr(TkDataFrameNamespace, name, _make_df_method(func))
-        setattr(TkLazyFrameNamespace, name, _make_lazy_method(func))
-        setattr(_TkGroupByNamespace, name, _make_groupby_method(func))
-
-    for name, func in _PANDAS_RESULT_FUNCTIONS.items():
-        setattr(TkDataFrameNamespace, name, _make_df_method_pandas(func))
-        setattr(TkLazyFrameNamespace, name, _make_lazy_method(func))
-        setattr(_TkGroupByNamespace, name, _make_groupby_method_pandas(func))
-
-    for name, func in _PANDAS_DF_ONLY_FUNCTIONS.items():
-        setattr(TkDataFrameNamespace, name, _make_df_method_pandas(func))
-        setattr(TkLazyFrameNamespace, name, _make_lazy_method(func))
-
-    pl.api.register_dataframe_namespace("tk")(TkDataFrameNamespace)
-    pl.api.register_lazyframe_namespace("tk")(TkLazyFrameNamespace)
-
     def _df_tk(self):
-        return TkDataFrameNamespace(self)
-
+        pass
     def _lf_tk(self):
-        return TkLazyFrameNamespace(self)
-
-    setattr(pl.DataFrame, "tk", property(_df_tk))
-    setattr(pl.LazyFrame, "tk", property(_lf_tk))
-    _register_groupby_namespace()
+        pass
+    pass
 
 
 # Execute registration on import.

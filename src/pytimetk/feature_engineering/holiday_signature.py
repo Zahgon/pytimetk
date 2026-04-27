@@ -213,45 +213,7 @@ def augment_holiday_signature(
     tk.augment_holiday_signature(df, 'date', 'France', engine='polars')
     ```
     """
-    # This function requires the holidays package to be installed
-
-    # Common checks
-    check_installed("holidays")
-    check_dataframe_or_groupby(data)
-    check_date_column(data, date_column)
-
-    engine_resolved = normalize_engine(engine, data)
-
-    if reduce_memory and engine_resolved == "polars":
-        warnings.warn(
-            "`reduce_memory=True` is only supported for pandas data.",
-            RuntimeWarning,
-            stacklevel=2,
-        )
-
-    conversion: FrameConversion = convert_to_engine(data, "pandas")
-    prepared_data = conversion.data
-
-    if isinstance(prepared_data, pd.core.groupby.generic.DataFrameGroupBy):
-        base_df = resolve_pandas_groupby_frame(prepared_data).copy()
-    else:
-        base_df = prepared_data.copy()
-
-    result = _augment_holiday_signature_pandas(
-        base_df,
-        date_column,
-        country_name,
-    )
-
-    if reduce_memory and engine_resolved == "pandas":
-        result = reduce_memory_usage(result)
-
-    restored = restore_output_type(result, conversion)
-
-    if isinstance(restored, pd.DataFrame):
-        return restored
-
-    return restored
+    pass
 
 
 def _augment_holiday_signature_pandas(
@@ -259,10 +221,7 @@ def _augment_holiday_signature_pandas(
     date_column: str,
     country_name: str = "UnitedStates",
 ) -> pd.DataFrame:
-    features = _compute_holiday_signature(data, date_column, country_name)
-    result = data.copy()
-    result[features.columns] = features
-    return result
+    pass
 
 
 def _compute_holiday_signature(
@@ -270,45 +229,7 @@ def _compute_holiday_signature(
     date_column: str,
     country_name: str,
 ) -> pd.DataFrame:
-    columns = ["is_holiday", "before_holiday", "after_holiday", "holiday_name"]
-    if data.empty:
-        empty = pd.DataFrame(index=data.index, columns=columns)
-        empty[["is_holiday", "before_holiday", "after_holiday"]] = 0
-        return empty
-
-    dates_normalized = data[date_column].dt.normalize()
-    start_date = dates_normalized.min()
-    end_date = dates_normalized.max()
-
-    years = list(range(start_date.year, end_date.year + 1))
-    if not years:
-        raise ValueError("No valid years found for holiday calculations.")
-
-    for key in holidays.__dict__.keys():
-        if key.lower() == country_name.lower():
-            country_module = holidays.__dict__[key]
-            break
-    else:
-        raise ValueError(f"Country '{country_name}' not found in holidays package.")
-
-    holiday_map = country_module(years=years)
-    holiday_dates = [pd.Timestamp(date) for date in holiday_map.keys()]
-    holiday_names = {pd.Timestamp(date): name for date, name in holiday_map.items()}
-
-    date_range = pd.date_range(start_date, end_date)
-    holiday_data = pd.DataFrame(index=date_range)
-    holiday_data["is_holiday"] = holiday_data.index.isin(holiday_dates).astype(int)
-    holiday_data["holiday_name"] = holiday_data.index.map(holiday_names.get)
-    holiday_data["before_holiday"] = (
-        holiday_data["is_holiday"].shift(-1).fillna(0).astype(int)
-    )
-    holiday_data["after_holiday"] = (
-        holiday_data["is_holiday"].shift(1).fillna(0).astype(int)
-    )
-
-    selected = holiday_data.loc[dates_normalized.tolist()]
-    selected.index = data.index
-    return selected[columns]
+    pass
 
 
 @pf.register_series_method
@@ -478,29 +399,5 @@ def get_holiday_signature(
     tk.get_holiday_signature(df['date'], 'France')
     ```
     """
-    check_installed("holidays")
-    check_series_or_datetime(idx)
-
-    engine_normalised = (engine or "").strip().lower()
-    if engine_normalised in ("", "auto"):
-        engine_normalised = "pandas"
-
-    if engine_normalised not in ("pandas", "polars"):
-        raise ValueError("Invalid engine. Use 'pandas', 'polars', or 'auto'.")
-
-    if isinstance(idx, pd.DatetimeIndex):
-        idx = pd.Series(idx, name="idx")
-
-    series_name = idx.name or "idx"
-    idx = idx.rename(series_name)
-
-    features = _compute_holiday_signature(idx.to_frame(), series_name, country_name)
-
-    result = idx.to_frame()
-    result[features.columns] = features
-
-    if engine_normalised == "polars":
-        return pl.from_pandas(result)
-
-    return result
+    pass
 

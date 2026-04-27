@@ -180,97 +180,7 @@ def augment_ewma_volatility(
     selector_df.glimpse()
     ```
     """
-
-    # Run common checks
-    check_dataframe_or_groupby(data)
-    date_column, close_columns = resolve_shift_columns(
-        data,
-        date_column=date_column,
-        value_column=close_column,
-        require_numeric=True,
-    )
-    if len(close_columns) != 1:
-        raise ValueError("`close_column` selector must resolve to exactly one column.")
-    close_column = close_columns[0]
-
-    if not 0 < decay_factor < 1:
-        raise ValueError("decay_factor must be between 0 and 1.")
-
-    window_list = _normalize_windows(window)
-
-    engine_resolved = normalize_engine(engine, data)
-    if engine_resolved == "cudf" and cudf is None:  # pragma: no cover - optional dependency
-        raise ImportError(
-            "cudf is required for engine='cudf', but it is not installed."
-        )
-
-    conversion_engine = engine_resolved
-    conversion: FrameConversion = convert_to_engine(data, conversion_engine)
-    prepared_data = conversion.data
-
-    if reduce_memory and conversion_engine == "pandas":
-        prepared_data = reduce_memory_usage(prepared_data)
-    elif reduce_memory and conversion_engine in ("polars", "cudf"):
-        warnings.warn(
-            "`reduce_memory=True` is only supported for pandas data.",
-            RuntimeWarning,
-            stacklevel=2,
-        )
-
-    if conversion_engine == "pandas":
-        sorted_data, _ = sort_dataframe(
-            prepared_data, date_column, keep_grouped_df=True
-        )
-        result = _augment_ewma_volatility_pandas(
-            data=sorted_data,
-            close_column=close_column,
-            decay_factor=decay_factor,
-            windows=window_list,
-        )
-        if reduce_memory:
-            result = reduce_memory_usage(result)
-    elif conversion_engine == "cudf":
-        cudf_df = prepared_data.obj if hasattr(prepared_data, "obj") else prepared_data
-        if not isinstance(cudf_df, cudf.DataFrame):
-            warnings.warn(
-                "Unsupported cudf object encountered for augment_ewma_volatility. Falling back to pandas.",
-                RuntimeWarning,
-                stacklevel=2,
-            )
-            pandas_input = conversion_to_pandas(conversion)
-            result = _augment_ewma_volatility_pandas(
-                data=pandas_input,
-                close_column=close_column,
-                decay_factor=decay_factor,
-                windows=window_list,
-            )
-        else:
-            result = _augment_ewma_volatility_cudf_dataframe(
-                cudf_df,
-                date_column=date_column,
-                close_column=close_column,
-                decay_factor=decay_factor,
-                windows=window_list,
-                group_columns=conversion.group_columns,
-                row_id_column=conversion.row_id_column,
-            )
-    else:
-        result = _augment_ewma_volatility_polars(
-            data=prepared_data,
-            date_column=date_column,
-            close_column=close_column,
-            decay_factor=decay_factor,
-            windows=window_list,
-            group_columns=conversion.group_columns,
-            row_id_column=conversion.row_id_column,
-        )
-
-    restored = restore_output_type(result, conversion)
-
-    if isinstance(restored, pd.DataFrame):
-        return restored.sort_index()
-
-    return restored
+    pass
 
 
 def _augment_ewma_volatility_pandas(
@@ -280,46 +190,7 @@ def _augment_ewma_volatility_pandas(
     windows: List[int],
 ) -> pd.DataFrame:
     """Pandas implementation of EWMA volatility calculation with varying minimum periods."""
-
-    if isinstance(data, pd.DataFrame):
-        df = data.copy(deep=False)
-        ratio = df[close_column] / df[close_column].shift(1)
-        ratio = ratio.replace([0, np.inf, -np.inf], np.nan)
-        df["log_returns"] = np.log(ratio)
-        df["squared_returns"] = df["log_returns"] ** 2
-
-        for win in windows:
-            col_name = f"{close_column}_ewma_vol_{win}_{decay_factor:.2f}"
-            ewma_variance = df["squared_returns"].ewm(
-                alpha=1 - decay_factor, adjust=False, min_periods=win
-            ).mean()
-            df[col_name] = np.sqrt(ewma_variance)
-
-        return df.drop(columns=["log_returns", "squared_returns"])
-
-    if isinstance(data, pd.core.groupby.generic.DataFrameGroupBy):
-        group_names = list(data.grouper.names)
-        df = resolve_pandas_groupby_frame(data).copy(deep=False)
-        shifted = df.groupby(group_names)[close_column].shift(1)
-        ratio = df[close_column] / shifted
-        ratio = ratio.replace([0, np.inf, -np.inf], np.nan)
-        df["log_returns"] = np.log(ratio)
-        df["squared_returns"] = df["log_returns"] ** 2
-
-        for win in windows:
-            col_name = f"{close_column}_ewma_vol_{win}_{decay_factor:.2f}"
-            ewma_variance = (
-                df.groupby(group_names)["squared_returns"]
-                .ewm(alpha=1 - decay_factor, adjust=False, min_periods=win)
-                .mean()
-            )
-            df[col_name] = (
-                ewma_variance.apply(np.sqrt).reset_index(level=0, drop=True)
-            )
-
-        return df.drop(columns=["log_returns", "squared_returns"])
-
-    raise TypeError("Unsupported data type passed to _augment_ewma_volatility_pandas.")
+    pass
 
 
 def _augment_ewma_volatility_cudf_dataframe(
@@ -332,60 +203,7 @@ def _augment_ewma_volatility_cudf_dataframe(
     group_columns: Optional[Sequence[str]],
     row_id_column: Optional[str],
 ) -> "cudf.DataFrame":
-    if cudf is None:  # pragma: no cover - optional dependency
-        raise ImportError(
-            "cudf is required to execute the cudf ewma volatility backend."
-        )
-
-    sort_columns: List[str] = [date_column]
-    if group_columns:
-        sort_columns = list(group_columns) + sort_columns
-
-    df_sorted = frame.sort_values(sort_columns)
-    df_sorted[close_column] = df_sorted[close_column].astype("float64")
-
-    if group_columns:
-        group_list = list(group_columns)
-        prev_close = df_sorted.groupby(group_list, sort=False)[close_column].shift(1)
-    else:
-        group_list = None
-        prev_close = df_sorted[close_column].shift(1)
-
-    ratio = df_sorted[close_column] / prev_close
-    ratio = ratio.where(prev_close != 0)
-    log_returns = cudf.Series(np.log(ratio))
-    df_sorted["__ewma_log_returns"] = log_returns
-    df_sorted["__ewma_squared_returns"] = log_returns ** 2
-
-    alpha = 1 - decay_factor
-
-    for win in windows:
-        col_name = f"{close_column}_ewma_vol_{win}_{decay_factor:.2f}"
-        if group_list:
-            result_series = cudf.Series(np.nan, index=df_sorted.index, dtype="float64")
-            for _, group_df in df_sorted.groupby(group_list, sort=False):
-                idx = group_df.index
-                variance = group_df["__ewma_squared_returns"].ewm(
-                    alpha=alpha,
-                    adjust=False,
-                    min_periods=win,
-                ).mean()
-                result_series.loc[idx] = variance.sqrt()
-            df_sorted[col_name] = result_series
-        else:
-            variance = df_sorted["__ewma_squared_returns"].ewm(
-                alpha=alpha,
-                adjust=False,
-                min_periods=win,
-            ).mean()
-            df_sorted[col_name] = variance.sqrt()
-
-    df_sorted = df_sorted.drop(columns=["__ewma_log_returns", "__ewma_squared_returns"])
-
-    if row_id_column and row_id_column in df_sorted.columns:
-        df_sorted = df_sorted.sort_values(row_id_column)
-
-    return df_sorted
+    pass
 
 
 def _augment_ewma_volatility_polars(
@@ -398,84 +216,10 @@ def _augment_ewma_volatility_polars(
     row_id_column: Optional[str],
 ) -> pl.DataFrame:
     """Polars implementation of EWMA volatility calculation with varying minimum periods."""
-
-    resolved_groups = resolve_polars_group_columns(data, group_columns)
-    frame = data.df if isinstance(data, pl.dataframe.group_by.GroupBy) else data
-    frame_with_id, row_col, generated = ensure_row_id_column(frame, row_id_column)
-
-    sort_keys = list(resolved_groups)
-    sort_keys.append(date_column)
-    sorted_frame = frame_with_id.sort(sort_keys)
-
     def _maybe_over(expr: pl.Expr) -> pl.Expr:
-        if resolved_groups:
-            return expr.over(resolved_groups)
-        return expr
-
-    lazy_frame = sorted_frame.lazy()
-    temp_columns = [
-        "__ewma_log_price",
-        "__ewma_prev_log_price",
-        "__ewma_log_return",
-        "__ewma_sq_return",
-    ]
-
-    lazy_frame = lazy_frame.with_columns(
-        pl.col(close_column).log().alias("__ewma_log_price")
-    )
-
-    lazy_frame = lazy_frame.with_columns(
-        _maybe_over(pl.col("__ewma_log_price").shift(1)).alias(
-            "__ewma_prev_log_price"
-        )
-    )
-
-    lazy_frame = lazy_frame.with_columns(
-        (
-            pl.col("__ewma_log_price") - pl.col("__ewma_prev_log_price")
-        ).alias("__ewma_log_return")
-    )
-
-    lazy_frame = lazy_frame.with_columns(
-        pl.when(pl.col("__ewma_log_return").is_finite())
-        .then(pl.col("__ewma_log_return"))
-        .otherwise(None)
-        .alias("__ewma_log_return")
-    )
-
-    lazy_frame = lazy_frame.with_columns(
-        (pl.col("__ewma_log_return") ** 2).alias("__ewma_sq_return")
-    )
-
-    for win in windows:
-        vol_expr = _maybe_over(
-            pl.col("__ewma_sq_return")
-            .ewm_mean(alpha=1 - decay_factor, adjust=False, min_periods=win)
-        ).sqrt()
-        lazy_frame = lazy_frame.with_columns(
-            vol_expr.alias(f"{close_column}_ewma_vol_{win}_{decay_factor:.2f}")
-        )
-
-    lazy_frame = lazy_frame.drop(temp_columns)
-
-    result = collect_lazyframe(lazy_frame).sort(row_col)
-
-    if generated:
-        result = result.drop(row_col)
-
-    return result
+        pass
+    pass
 
 
 def _normalize_windows(window: Union[int, Tuple[int, int], List[int]]) -> List[int]:
-    if isinstance(window, int):
-        return [window]
-    if isinstance(window, tuple):
-        if len(window) != 2:
-            raise ValueError("Expected tuple of length 2 for `window`.")
-        start, end = window
-        return list(range(start, end + 1))
-    if isinstance(window, list):
-        return [int(w) for w in window]
-    raise TypeError(
-        f"Invalid window specification: type: {type(window)}. Please use int, tuple, or list."
-    )
+    pass

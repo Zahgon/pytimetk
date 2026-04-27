@@ -239,124 +239,11 @@ def summarize_by_time(
     )
     ```
     """
-    # Run common checks
-    check_dataframe_or_groupby(data)
-
-    selector_frame = _resolve_selector_frame(data)
-
     def _resolve_single(selector, label):
-        if isinstance(selector, str):
-            return selector
-        resolved = resolve_column_selection(
-            selector_frame, selector, allow_none=False, require_match=True
-        )
-        if len(resolved) != 1:
-            raise ValueError(
-                f"`{label}` selector must resolve to exactly one column (resolved={resolved})."
-            )
-        return resolved[0]
-
+        pass
     def _resolve_multi(selector, label):
-        if isinstance(selector, str):
-            return selector
-        if isinstance(selector, Sequence) and not isinstance(selector, (str, bytes)):
-            collected: List[str] = []
-            for entry in selector:
-                if isinstance(entry, str):
-                    collected.append(entry)
-                else:
-                    resolved = resolve_column_selection(
-                        selector_frame,
-                        entry,
-                        allow_none=False,
-                        require_match=True,
-                        unique=False,
-                    )
-                    collected.extend(resolved)
-            if not collected:
-                raise ValueError(f"`{label}` selector list did not match any columns.")
-            ordered: List[str] = []
-            seen = set()
-            for name in collected:
-                if name not in seen:
-                    seen.add(name)
-                    ordered.append(name)
-            return ordered
-        resolved = resolve_column_selection(
-            selector_frame, selector, allow_none=False, require_match=True
-        )
-        if len(resolved) != 1:
-            raise ValueError(
-                f"`{label}` selector must resolve to exactly one column (resolved={resolved})."
-            )
-        return resolved[0]
-
-    date_column = _resolve_single(date_column, "date_column")
-    value_column = _resolve_multi(value_column, "value_column")
-
-    check_value_column(selector_frame, value_column)
-    check_date_column(selector_frame, date_column)
-
-    agg_has_custom = _agg_contains_custom(agg_func)
-    agg_string_funcs: List[str] = []
-    if not agg_has_custom:
-        try:
-            agg_string_funcs = _agg_collect_strings(agg_func)
-        except TypeError:
-            agg_has_custom = True
-
-    engine_resolved = normalize_engine(engine, data)
-
-    conversion_engine = engine_resolved
-    if engine_resolved == "cudf":
-        if agg_has_custom or wide_format:
-            warnings.warn(
-                "summarize_by_time cudf path: custom aggregations or wide_format=True "
-                "are currently unsupported. Falling back to the pandas implementation.",
-                RuntimeWarning,
-                stacklevel=2,
-            )
-            conversion_engine = "pandas"
-        elif cudf is None:  # pragma: no cover - optional dependency
-            raise ImportError("cudf is required for engine='cudf', but it is not installed.")
-    conversion = convert_to_engine(data, conversion_engine)
-    prepared = conversion.data
-
-    if conversion_engine == "pandas":
-        result = _summarize_by_time_pandas(
-            prepared,
-            date_column=date_column,
-            value_column=value_column,
-            freq=freq,
-            agg_func=agg_func,
-            wide_format=wide_format,
-            fillna=fillna,
-        )
-    elif conversion_engine == "polars":
-        result = _summarize_by_time_polars(
-            prepared,
-            date_column=date_column,
-            value_column=value_column,
-            freq=freq,
-            agg_func=agg_func,
-            wide_format=wide_format,
-            fillna=fillna,
-            conversion=conversion,
-        )
-    elif conversion_engine == "cudf":
-        result = _summarize_by_time_cudf(
-            prepared,
-            date_column=date_column,
-            value_column=value_column,
-            freq=freq,
-            agg_funcs=agg_string_funcs,
-            fillna=fillna,
-            conversion=conversion,
-        )
-    else:
-        raise ValueError("Invalid engine. Use 'pandas' or 'polars'.")
-
-    return restore_output_type(result, conversion)
+        pass
+    pass
 
 
 def _summarize_by_time_pandas(
@@ -368,77 +255,7 @@ def _summarize_by_time_pandas(
     wide_format: bool = False,
     fillna: int = 0,
 ) -> pd.DataFrame:
-    freq = normalize_frequency_alias(freq)
-
-    # Convert value_column to a list if it is not already
-    if not isinstance(value_column, list):
-        value_column = [value_column]
-
-    # Set the index of data to the date_column
-    if isinstance(data, pd.DataFrame):
-        data = data.set_index(date_column)
-
-    group_names = None
-    if isinstance(data, pd.core.groupby.generic.DataFrameGroupBy):
-        group_names = data.grouper.names
-        data = resolve_pandas_groupby_frame(data).set_index(date_column).groupby(group_names)
-
-    # Group data by the groups columns if groups is not None
-    # if groups is not None:
-    #     data = data.groupby(groups)
-
-    # Resample data based on the specified freq
-    data = data.resample(rule=freq)
-
-    # Create a dictionary mapping each value column to the aggregating function(s)
-    agg_dict = {col: agg_func for col in value_column}
-
-    # Get a list of unique first elements in the agg_dict values (used for renaming lambda columns)
-    unique_first_elements = [
-        func[0]
-        for value in agg_dict.values()
-        for func in value
-        if isinstance(func, tuple)
-    ]
-
-    if not unique_first_elements == []:
-        for key, value in agg_dict.items():
-            agg_dict[key] = [
-                func[1] if isinstance(func, tuple) else func for func in value
-            ]
-
-    # Apply the aggregation using the dict method of the resampled data
-    data = data.agg(func=agg_dict)
-
-    # Unstack the grouped columns if wide_format is True and groups is not None
-    if wide_format and group_names is not None:
-        data = data.unstack(group_names)
-
-    # Fill missing values with the specified fillna value
-    data = data.fillna(fillna)
-
-    # Flatten the multiindex column names if flatten_column_names is True
-    data = flatten_multiindex_column_names(data)
-
-    # Reset the index of data
-    data.reset_index(inplace=True)
-
-    # Rename any lambda columns
-    if not unique_first_elements == []:
-        columns = data.columns
-
-        names_iter = cycle(unique_first_elements)
-
-        new_columns = [
-            re.sub(pattern=r"<lambda.*?>", repl=next(names_iter), string=col)
-            if "<lambda" in col
-            else col
-            for col in columns
-        ]
-
-        data.columns = new_columns
-
-    return data
+    pass
  
 
 def _summarize_by_time_cudf(
@@ -450,73 +267,9 @@ def _summarize_by_time_cudf(
     fillna: int,
     conversion: FrameConversion,
 ) -> "cudf.DataFrame":
-    if cudf is None:  # pragma: no cover - optional dependency
-        raise ImportError("cudf is required to execute the cudf summarize_by_time backend.")
-
-    if hasattr(prepared, "obj"):
-        df = resolve_pandas_groupby_frame(prepared).copy(deep=True)
-    else:
-        df = prepared.copy(deep=True)
-
-    value_cols = [value_column] if isinstance(value_column, str) else list(value_column)
-    agg_dict = {col: agg_funcs for col in value_cols}
-
-    group_cols = conversion.group_columns or []
-    sort_cols: List[str] = list(group_cols)
-    sort_cols.append(date_column)
-    df_sorted = df.sort_values(sort_cols)
-
-    if date_column not in df_sorted.columns:
-        raise KeyError(f"{date_column} not found in DataFrame")
-
-    df_sorted[date_column] = cudf.to_datetime(df_sorted[date_column])
-
     def _flatten_columns(frame: "cudf.DataFrame") -> "cudf.DataFrame":
-        rename_map = {}
-        for col in frame.columns:
-            if isinstance(col, tuple) and len(col) == 2:
-                rename_map[col] = f"{col[0]}_{col[1]}"
-        if rename_map:
-            frame = frame.rename(columns=rename_map)
-        return frame
-
-    if group_cols:
-        frames: List["cudf.DataFrame"] = []
-        grouped = df_sorted.groupby(group_cols, sort=False)
-        for keys, group_df in grouped:
-            if not isinstance(keys, tuple):
-                keys = (keys,)
-            group_resampled = (
-                group_df.set_index(date_column)
-                .resample(freq)
-                .agg(agg_dict)
-                .reset_index()
-            )
-            for col_name, key_value in zip(group_cols, keys):
-                group_resampled[col_name] = key_value
-            frames.append(_flatten_columns(group_resampled))
-        if not frames:
-            result = cudf.DataFrame(columns=[date_column, *group_cols])
-        else:
-            result = cudf.concat(frames, ignore_index=True)
-        ordered_cols = [date_column] + list(group_cols)
-        for col in result.columns:
-            if col not in ordered_cols:
-                ordered_cols.append(col)
-        result = result[ordered_cols]
-    else:
-        result = (
-            df_sorted.set_index(date_column)
-            .resample(freq)
-            .agg(agg_dict)
-            .reset_index()
-        )
-        result = _flatten_columns(result)
-
-    if fillna is not None:
-        result = result.fillna(fillna)
-
-    return result
+        pass
+    pass
 
 
 def _summarize_by_time_polars(
@@ -529,67 +282,15 @@ def _summarize_by_time_polars(
     fillna: int,
     conversion: FrameConversion,
 ) -> pl.DataFrame:
-    agg_funcs = [agg_func] if isinstance(agg_func, str) else list(agg_func)
-    if any(not isinstance(func, str) for func in agg_funcs):
-        raise ValueError(
-            "Polars engine only supports string aggregation functions. "
-            "Use the pandas engine for custom callables."
-        )
-
-    frame = (
-        prepared.df if isinstance(prepared, pl.dataframe.group_by.GroupBy) else prepared
-    )
-
-    row_id_col = conversion.row_id_column
-    if row_id_col and row_id_col in frame.columns:
-        frame = frame.drop(row_id_col)
-
-    pandas_frame = frame.to_pandas()
-
-    if conversion.group_columns:
-        pandas_data: Union[pd.DataFrame, pd.core.groupby.generic.DataFrameGroupBy] = (
-            pandas_frame.groupby(conversion.group_columns, sort=False)
-        )
-    else:
-        pandas_data = pandas_frame
-
-    pandas_result = _summarize_by_time_pandas(
-        pandas_data,
-        date_column=date_column,
-        value_column=value_column,
-        freq=freq,
-        agg_func=agg_func,
-        wide_format=wide_format,
-        fillna=fillna,
-    )
-
-    return pl.from_pandas(pandas_result)
+    pass
 
 
 def _agg_contains_custom(agg_spec: Union[str, List, Tuple]) -> bool:
-    if isinstance(agg_spec, tuple):
-        return True
-    if isinstance(agg_spec, list):
-        return any(_agg_contains_custom(item) for item in agg_spec)
-    return False
+    pass
 
 
 def _agg_collect_strings(agg_spec: Union[str, List]) -> List[str]:
-    if isinstance(agg_spec, str):
-        return [agg_spec]
-    if isinstance(agg_spec, list):
-        collected: List[str] = []
-        for item in agg_spec:
-            if isinstance(item, str):
-                collected.append(item)
-            elif isinstance(item, list):
-                collected.extend(_agg_collect_strings(item))
-            else:
-                raise TypeError(
-                    "Only string aggregations are supported for the cudf backend."
-                )
-        return collected
-    raise TypeError("Only string aggregations are supported for the cudf backend.")
+    pass
 def _resolve_selector_frame(
     data: Union[
         pd.DataFrame,
@@ -599,23 +300,4 @@ def _resolve_selector_frame(
         "cudf.DataFrame",
     ],
 ) -> pd.DataFrame:
-    if isinstance(data, pd.core.groupby.generic.DataFrameGroupBy):
-        return resolve_pandas_groupby_frame(data).copy()
-    if isinstance(data, pd.DataFrame):
-        return data.copy()
-    if pl is not None:
-        if isinstance(data, pl.dataframe.group_by.GroupBy):
-            base = getattr(data, "df", None)
-            if base is None:
-                raise TypeError(
-                    "Unable to resolve columns from the supplied polars GroupBy for selector resolution."
-                )
-            return base.to_pandas()
-        if isinstance(data, pl.DataFrame):
-            return data.to_pandas()
-    if hasattr(data, "to_pandas"):  # cudf or similar
-        return data.to_pandas()
-    raise TypeError(
-        "Column selectors currently require pandas or polars data. Convert to one of these "
-        "before calling summarize_by_time."
-    )
+    pass

@@ -20,24 +20,7 @@ def ensure_ray_initialized(num_cpus: Optional[int] = None):
     num_cpus : Optional[int]
         Optional CPU limit to pass to ``ray.init``.
     """
-
-    if ray is None:  # pragma: no cover - guarded at runtime
-        raise ImportError(
-            "Ray is required for parallel execution. Install it with `pip install ray` "
-            "or set `threads=1` to disable parallel processing."
-        )
-
-    if not ray.is_initialized():
-        init_kwargs = {
-            "ignore_reinit_error": True,
-            "include_dashboard": False,
-            "log_to_driver": False,
-        }
-        if num_cpus is not None and num_cpus > 0:
-            init_kwargs["num_cpus"] = num_cpus
-        ray.init(**init_kwargs)
-
-    return ray
+    pass
 
 
 def run_ray_tasks(
@@ -64,33 +47,7 @@ def run_ray_tasks(
     show_progress : bool
         Whether to display progress via tqdm.
     """
-
-    if not args_list:
-        return []
-
-    from pytimetk.utils.parallel_helpers import conditional_tqdm
-
-    ray_module = ensure_ray_initialized(num_cpus)
-    remote_worker = ray_module.remote(func)
-    jobs = [remote_worker.remote(*args) for args in args_list]
-    index_map = {job: idx for idx, job in enumerate(jobs)}
-    pending = list(jobs)
-    results: List = [None] * len(jobs)
-
-    iterator = conditional_tqdm(
-        range(len(jobs)),
-        total=len(jobs),
-        display=show_progress,
-        desc=desc,
-    )
-
-    for _ in iterator:
-        ready, pending = ray_module.wait(pending, num_returns=1)
-        ref = ready[0]
-        idx = index_map[ref]
-        results[idx] = ray_module.get(ref)
-
-    return results
+    pass
 
 
 __all__ = ["ensure_ray_initialized", "run_ray_tasks"]

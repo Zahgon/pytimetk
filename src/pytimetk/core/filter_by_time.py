@@ -205,51 +205,7 @@ def filter_by_time(
     ```
 
     """
-    # Checks
-    check_dataframe_or_groupby(data)
-    check_date_column(data, date_column)
-
-    engine_resolved = normalize_engine(engine, data)
-
-    if engine_resolved == "cudf" and cudf is None:  # pragma: no cover - optional dependency
-        raise ImportError(
-            "cudf is required for engine='cudf', but it is not installed."
-        )
-
-    conversion = convert_to_engine(data, engine_resolved)
-    prepared = conversion.data
-
-    if engine_resolved == "pandas":
-        result = _filter_by_time_pandas(
-            prepared,
-            date_column=date_column,
-            start_date=start_date,
-            end_date=end_date,
-        )
-    elif engine_resolved == "polars":
-        result = _filter_by_time_polars(
-            prepared,
-            date_column=date_column,
-            start_date=start_date,
-            end_date=end_date,
-        )
-    elif engine_resolved == "cudf":
-        result = _filter_by_time_cudf(
-            prepared,
-            date_column=date_column,
-            start_date=start_date,
-            end_date=end_date,
-        )
-    else:
-        raise ValueError("Invalid engine. Use 'pandas', 'polars', or 'cudf'.")
-
-    if engine_resolved == "polars" and conversion.original_kind in (
-        "pandas_df",
-        "pandas_groupby",
-    ):
-        conversion.pandas_index = None
-
-    return restore_output_type(result, conversion)
+    pass
 
 
 # Monkey Patch the Method to Pandas Grouby Objects
@@ -259,40 +215,7 @@ def _filter_by_time_pandas(
     start_date: str,
     end_date: str,
 ):
-    if isinstance(data, pd.core.groupby.generic.DataFrameGroupBy):
-        data = resolve_pandas_groupby_frame(data)
-
-    df = data.copy()
-    df[date_column] = pd.to_datetime(df[date_column])
-
-    # Handle start/end dates and parsing
-    if start_date == "start":
-        start_date = df[date_column].min()
-    if end_date == "end":
-        end_date = df[date_column].max()
-
-    if isinstance(start_date, str):
-        start_date_parsed = pd.to_datetime(start_date)
-    else:
-        start_date_parsed = start_date
-
-    if isinstance(end_date, str):
-        end_date_parsed = parse_end_date(end_date)
-    else:
-        end_date_parsed = end_date
-
-    # If the original index has a timezone, apply it to the future dates
-    if df[date_column].dt.tz is not None:
-        start_date_parsed = start_date_parsed.tz_localize(df[date_column].dt.tz)
-        end_date_parsed = end_date_parsed.tz_localize(df[date_column].dt.tz)
-
-    # Filter
-    filtered_df = df[
-        (df[date_column] >= start_date_parsed) & (df[date_column] <= end_date_parsed)
-    ]
-
-    # Return
-    return filtered_df
+    pass
 
 
 def _filter_by_time_polars(
@@ -301,32 +224,7 @@ def _filter_by_time_polars(
     start_date: str,
     end_date: str,
 ) -> pl.DataFrame:
-    frame = data.df if isinstance(data, pl.dataframe.group_by.GroupBy) else data
-
-    if date_column not in frame.columns:
-        raise KeyError(f"{date_column} not found in DataFrame")
-
-    frame = frame.with_columns(pl.col(date_column).cast(pl.Datetime("ns")))
-
-    if start_date == "start":
-        start_value = frame.select(pl.col(date_column).min()).item()
-    else:
-        start_value = pd.to_datetime(start_date)
-
-    if end_date == "end":
-        end_value = frame.select(pl.col(date_column).max()).item()
-    else:
-        end_value = parse_end_date(end_date)
-
-    start_value = pd.Timestamp(start_value).to_pydatetime()
-    end_value = pd.Timestamp(end_value).to_pydatetime()
-
-    filtered = frame.filter(
-        (pl.col(date_column) >= pl.lit(start_value))
-        & (pl.col(date_column) <= pl.lit(end_value))
-    )
-
-    return filtered
+    pass
 
 
 def _filter_by_time_cudf(
@@ -335,37 +233,7 @@ def _filter_by_time_cudf(
     start_date: str,
     end_date: str,
 ) -> "cudf.DataFrame":
-    if cudf is None:  # pragma: no cover - optional dependency
-        raise ImportError("cudf is required to execute the cudf filter_by_time backend.")
-
-    if hasattr(data, "obj"):
-        df = data.obj.copy(deep=True)
-    else:
-        df = data.copy(deep=True)
-
-    if date_column not in df.columns:
-        raise KeyError(f"{date_column} not found in DataFrame")
-
-    df[date_column] = cudf.to_datetime(df[date_column])
-
-    if start_date == "start":
-        start_value = df[date_column].min()
-        start_value = start_value.to_pandas() if hasattr(start_value, "to_pandas") else start_value
-    else:
-        start_value = pd.to_datetime(start_date)
-
-    if end_date == "end":
-        end_value = df[date_column].max()
-        end_value = end_value.to_pandas() if hasattr(end_value, "to_pandas") else end_value
-    else:
-        end_value = parse_end_date(end_date)
-
-    mask = (df[date_column] >= pd.to_datetime(start_value)) & (
-        df[date_column] <= pd.to_datetime(end_value)
-    )
-    filtered_df = df.loc[mask]
-
-    return filtered_df
+    pass
 
 
 # Utilities ----

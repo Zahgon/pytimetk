@@ -132,92 +132,7 @@ def augment_ppo(
     )
     ```
     """
-
-    check_dataframe_or_groupby(data)
-    date_column, close_cols = resolve_shift_columns(
-        data,
-        date_column=date_column,
-        value_column=close_column,
-        require_numeric=True,
-    )
-
-    engine_resolved = normalize_engine(engine, data)
-    if engine_resolved == "cudf" and cudf is None:  # pragma: no cover - optional dependency
-        raise ImportError(
-            "cudf is required for engine='cudf', but it is not installed."
-        )
-
-    conversion_engine = engine_resolved
-    conversion: FrameConversion = convert_to_engine(data, conversion_engine)
-    prepared_data = conversion.data
-
-    if len(close_cols) != 1:
-        raise ValueError("`close_column` selector must resolve to exactly one column.")
-    close_column = close_cols[0]
-
-    if reduce_memory and conversion_engine == "pandas":
-        prepared_data = reduce_memory_usage(prepared_data)
-    elif reduce_memory and conversion_engine in ("polars", "cudf"):
-        warnings.warn(
-            "`reduce_memory=True` is only supported for pandas data.",
-            RuntimeWarning,
-            stacklevel=2,
-        )
-
-    if conversion_engine == "pandas":
-        sorted_data, _ = sort_dataframe(
-            prepared_data, date_column, keep_grouped_df=True
-        )
-        result = _augment_ppo_pandas(
-            data=sorted_data,
-            close_column=close_column,
-            fast_period=fast_period,
-            slow_period=slow_period,
-        )
-        if reduce_memory:
-            result = reduce_memory_usage(result)
-    elif conversion_engine == "cudf":
-        cudf_df = prepared_data.obj if hasattr(prepared_data, "obj") else prepared_data
-        if not isinstance(cudf_df, cudf.DataFrame):
-            warnings.warn(
-                "Unsupported cudf object encountered for augment_ppo. Falling back to pandas.",
-                RuntimeWarning,
-                stacklevel=2,
-            )
-            pandas_input = conversion_to_pandas(conversion)
-            result = _augment_ppo_pandas(
-                data=pandas_input,
-                close_column=close_column,
-                fast_period=fast_period,
-                slow_period=slow_period,
-            )
-        else:
-            result = _augment_ppo_cudf_dataframe(
-                cudf_df,
-                date_column=date_column,
-                close_column=close_column,
-                fast_period=fast_period,
-                slow_period=slow_period,
-                group_columns=conversion.group_columns,
-                row_id_column=conversion.row_id_column,
-            )
-    else:
-        result = _augment_ppo_polars(
-            data=prepared_data,
-            date_column=date_column,
-            close_column=close_column,
-            fast_period=fast_period,
-            slow_period=slow_period,
-            group_columns=conversion.group_columns,
-            row_id_column=conversion.row_id_column,
-        )
-
-    restored = restore_output_type(result, conversion)
-
-    if isinstance(restored, pd.DataFrame):
-        return restored.sort_index()
-
-    return restored
+    pass
 
 
 def _augment_ppo_cudf_dataframe(
@@ -230,50 +145,7 @@ def _augment_ppo_cudf_dataframe(
     group_columns: Optional[Sequence[str]],
     row_id_column: Optional[str],
 ) -> "cudf.DataFrame":
-    if cudf is None:  # pragma: no cover - optional dependency
-        raise ImportError("cudf is required to execute the cudf ppo backend.")
-
-    sort_columns: Sequence[str] = [date_column]
-    if group_columns:
-        sort_columns = list(group_columns) + list(sort_columns)
-
-    df_sorted = frame.sort_values(list(sort_columns))
-    df_sorted[close_column] = df_sorted[close_column].astype("float64")
-
-    result_name = f"{close_column}_ppo_line_{fast_period}_{slow_period}"
-    df_sorted[result_name] = cudf.Series(np.nan, index=df_sorted.index, dtype="float64")
-
-    if group_columns:
-        group_list = list(group_columns)
-        grouped_iter = df_sorted.groupby(group_list, sort=False)
-        for _, group_df in grouped_iter:
-            group_indices = group_df.index
-            close_series = group_df[close_column]
-            ema_fast = close_series.ewm(
-                span=fast_period, adjust=False, min_periods=0
-            ).mean()
-            ema_slow = close_series.ewm(
-                span=slow_period, adjust=False, min_periods=0
-            ).mean()
-            denom = ema_slow
-            ppo_series = ((ema_fast - ema_slow) / denom) * 100
-            ppo_series = ppo_series.where(denom != 0)
-            df_sorted.loc[group_indices, result_name] = ppo_series
-    else:
-        ema_fast = df_sorted[close_column].ewm(
-            span=fast_period, adjust=False, min_periods=0
-        ).mean()
-        ema_slow = df_sorted[close_column].ewm(
-            span=slow_period, adjust=False, min_periods=0
-        ).mean()
-        denom = ema_slow
-        ppo_series = ((ema_fast - ema_slow) / denom) * 100
-        df_sorted[result_name] = ppo_series.where(denom != 0)
-
-    if row_id_column and row_id_column in df_sorted.columns:
-        df_sorted = df_sorted.sort_values(row_id_column)
-
-    return df_sorted
+    pass
 
 
 def _augment_ppo_pandas(
@@ -282,36 +154,11 @@ def _augment_ppo_pandas(
     fast_period: int,
     slow_period: int,
 ) -> pd.DataFrame:
-    if isinstance(data, pd.core.groupby.generic.DataFrameGroupBy):
-        group_names = data.grouper.names
-        base_df = resolve_pandas_groupby_frame(data).copy(deep=False)
-
-        base_df = pandas_groupby_apply(
-            base_df.groupby(group_names, group_keys=False),
-            lambda x: _calculate_ppo_pandas(x, close_column, fast_period, slow_period),
-            include_groups=True,
-        )
-        return base_df
-
-    if isinstance(data, pd.DataFrame):
-        df = data.copy(deep=False)
-        return _calculate_ppo_pandas(df, close_column, fast_period, slow_period)
-
-    raise TypeError("Unsupported data type passed to _augment_ppo_pandas.")
+    pass
 
 
 def _calculate_ppo_pandas(df, close_column, fast_period, slow_period):
-    ema_fast = (
-        df[close_column].ewm(span=fast_period, adjust=False, min_periods=0).mean()
-    )
-    ema_slow = (
-        df[close_column].ewm(span=slow_period, adjust=False, min_periods=0).mean()
-    )
-
-    ppo_line = (ema_fast - ema_slow) / ema_slow * 100
-
-    df[f"{close_column}_ppo_line_{fast_period}_{slow_period}"] = ppo_line
-    return df
+    pass
 
 
 def _augment_ppo_polars(
@@ -323,33 +170,4 @@ def _augment_ppo_polars(
     group_columns: Optional[Sequence[str]],
     row_id_column: Optional[str],
 ) -> pl.DataFrame:
-    resolved_groups = resolve_polars_group_columns(data, group_columns)
-    frame = data.df if isinstance(data, pl.dataframe.group_by.GroupBy) else data
-    frame_with_id, row_col, generated = ensure_row_id_column(frame, row_id_column)
-
-    sort_keys = list(resolved_groups)
-    sort_keys.append(date_column)
-    sorted_frame = frame_with_id.sort(sort_keys)
-
-    fast_ema = pl.col(close_column).ewm_mean(
-        span=fast_period, adjust=False, min_periods=0
-    )
-    slow_ema = pl.col(close_column).ewm_mean(
-        span=slow_period, adjust=False, min_periods=0
-    )
-
-    if resolved_groups:
-        fast_ema = fast_ema.over(resolved_groups)
-        slow_ema = slow_ema.over(resolved_groups)
-
-    ppo_expr = pl.when(slow_ema == 0)
-    ppo_expr = ppo_expr.then(None).otherwise((fast_ema - slow_ema) / slow_ema * 100)
-
-    result = sorted_frame.with_columns(
-        ppo_expr.alias(f"{close_column}_ppo_line_{fast_period}_{slow_period}")
-    ).sort(row_col)
-
-    if generated:
-        result = result.drop(row_col)
-
-    return result
+    pass

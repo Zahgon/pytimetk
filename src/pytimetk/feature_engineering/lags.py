@@ -141,73 +141,7 @@ def augment_lags(
     lagged_df_single_two
     ```
     """
-    # Run common checks
-    check_dataframe_or_groupby(data)
-    date_column, value_column = resolve_shift_columns(
-        data,
-        date_column=date_column,
-        value_column=value_column,
-    )
-
-    resolved_lags = resolve_shift_values(
-        lags,
-        label="lags",
-        data=data,
-        date_column=date_column,
-    )
-
-    engine_resolved = normalize_engine(engine, data)
-    conversion: FrameConversion = convert_to_engine(data, engine_resolved)
-    prepared_data = conversion.data
-
-    if reduce_memory and engine_resolved == "pandas":
-        prepared_data = reduce_memory_usage(prepared_data)
-    elif reduce_memory and engine_resolved in ("polars", "cudf"):
-        warnings.warn(
-            "`reduce_memory=True` is only supported for pandas data.",
-            RuntimeWarning,
-            stacklevel=2,
-        )
-
-    if engine_resolved == "pandas":
-        sorted_data, _ = sort_dataframe(
-            prepared_data, date_column, keep_grouped_df=True
-        )
-        result = _augment_lags_pandas(
-            data=sorted_data,
-            date_column=date_column,
-            value_column=value_column,
-            lags=resolved_lags,
-        )
-        if reduce_memory:
-            result = reduce_memory_usage(result)
-    elif engine_resolved == "polars":
-        result = _augment_lags_polars(
-            data=prepared_data,
-            date_column=date_column,
-            value_column=value_column,
-            lags=resolved_lags,
-            group_columns=conversion.group_columns,
-            row_id_column=conversion.row_id_column,
-        )
-    elif engine_resolved == "cudf":
-        result = _augment_lags_cudf(
-            data=prepared_data,
-            date_column=date_column,
-            value_column=value_column,
-            lags=resolved_lags,
-            group_columns=conversion.group_columns,
-            row_id_column=conversion.row_id_column,
-        )
-    else:  # pragma: no cover - defensive branch
-        raise RuntimeError(f"Unhandled engine: {engine_resolved}")
-
-    restored = restore_output_type(result, conversion)
-
-    if isinstance(restored, pd.DataFrame):
-        return restored.sort_index()
-
-    return restored
+    pass
 
 
 def _augment_lags_pandas(
@@ -216,30 +150,7 @@ def _augment_lags_pandas(
     value_column: Union[str, List[str]],
     lags: List[int],
 ) -> pd.DataFrame:
-    if isinstance(value_column, str):
-        value_column = [value_column]
-
-    # DATAFRAME EXTENSION - If data is a Pandas DataFrame, apply lag function
-    if isinstance(data, pd.DataFrame):
-        df = data.copy()
-
-        for col in value_column:
-            for lag in lags:
-                df[f"{col}_lag_{lag}"] = df[col].shift(lag)
-
-    # GROUPED EXTENSION - If data is a GroupBy object, add lags by group
-    if isinstance(data, pd.core.groupby.generic.DataFrameGroupBy):
-        # Get the group names and original ungrouped data
-        group_names = data.grouper.names
-        data = resolve_pandas_groupby_frame(data)
-
-        df = data.copy()
-
-        for col in value_column:
-            for lag in lags:
-                df[f"{col}_lag_{lag}"] = df.groupby(group_names)[col].shift(lag)
-
-    return df
+    pass
 
 
 def _augment_lags_polars(
@@ -250,31 +161,7 @@ def _augment_lags_polars(
     group_columns: Optional[Sequence[str]],
     row_id_column: Optional[str],
 ) -> pl.DataFrame:
-    if isinstance(value_column, str):
-        value_column = [value_column]
-
-    resolved_groups = resolve_polars_group_columns(data, group_columns)
-    frame = data.df if isinstance(data, pl.dataframe.group_by.GroupBy) else data
-    frame_with_id, row_col, generated = ensure_row_id_column(frame, row_id_column)
-
-    sort_keys = list(resolved_groups)
-    sort_keys.append(date_column)
-    sorted_frame = frame_with_id.sort(sort_keys)
-
-    lag_columns = []
-    for col in value_column:
-        for lag in lags:
-            expr = pl.col(col).shift(lag)
-            if resolved_groups:
-                expr = expr.over(resolved_groups)
-            lag_columns.append(expr.alias(f"{col}_lag_{lag}"))
-
-    augmented = sorted_frame.with_columns(lag_columns).sort(row_col)
-
-    if generated:
-        augmented = augmented.drop(row_col)
-
-    return augmented
+    pass
 
 
 def _augment_lags_cudf(
@@ -285,52 +172,4 @@ def _augment_lags_cudf(
     group_columns: Optional[Sequence[str]],
     row_id_column: Optional[str],
 ):
-    if cudf is None:
-        raise ImportError(
-            "cudf is required for GPU execution but is not installed. "
-            "Install pytimetk with the 'gpu' extra."
-        )
-
-    if isinstance(value_column, str):
-        value_column = [value_column]
-
-    if CudfDataFrameGroupBy is not None and isinstance(data, CudfDataFrameGroupBy):
-        frame = resolve_pandas_groupby_frame(data).copy(deep=True)
-        resolved_groups: Sequence[str] = list(group_columns) if group_columns else []
-    else:
-        frame = data.copy(deep=True)  # type: ignore[assignment]
-        resolved_groups = list(group_columns) if group_columns else []
-
-    temp_row_col = row_id_column
-    generated_row_id = False
-    if temp_row_col is None or temp_row_col not in frame.columns:
-        temp_base = "__pytimetk_row_id__"
-        temp_row_col = temp_base
-        suffix = 0
-        while temp_row_col in frame.columns:
-            suffix += 1
-            temp_row_col = f"{temp_base}_{suffix}"
-        frame[temp_row_col] = cudf.Series(range(len(frame)), dtype="int64")
-        generated_row_id = True
-
-    sort_keys = list(resolved_groups)
-    sort_keys.append(date_column)
-    frame = frame.sort_values(sort_keys)
-
-    grouped = frame.groupby(resolved_groups, sort=False) if resolved_groups else None
-
-    for col in value_column:
-        for lag in lags:
-            new_col = f"{col}_lag_{lag}"
-            if grouped is not None:
-                series = grouped[col].shift(lag)
-            else:
-                series = frame[col].shift(lag)
-            frame[new_col] = series
-
-    frame = frame.sort_values(temp_row_col)
-
-    if generated_row_id:
-        frame = frame.drop(columns=[temp_row_col])
-
-    return frame
+    pass

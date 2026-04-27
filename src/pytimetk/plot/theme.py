@@ -97,58 +97,7 @@ def theme_timetk(
     ```
 
     """
-
-    # Tidyquant colors
-    blue = "#2c3e50"
-    green = "#18BC9C"
-    white = "#FFFFFF"
-    grey = "#cccccc"
-
-    return theme(
-        # # Base Inherited Elements
-        line=element_line(color=blue, size=0.5),
-        rect=element_rect(fill=white, colour=blue, size=0.5),
-        # Axes
-        axis_line=element_blank(),
-        axis_text=element_text(size=base_size * 0.6),
-        axis_ticks=element_line(color=grey, size=0.5),
-        axis_title=element_text(size=base_size * 1),
-        axis_text_y=element_text(margin=dict(r=5)),
-        # Panel
-        panel_background=element_rect(fill=white, color=None),
-        panel_border=element_rect(fill=None, color=blue, size=0.5),
-        panel_grid_major=element_line(color=grey, size=0.33),
-        panel_grid_minor=element_line(color=grey, size=0.33),
-        panel_grid_minor_x=element_blank(),
-        panel_spacing=0.005,
-        # Legend
-        legend_key=element_rect(color=white),
-        legend_position="bottom",
-        legend_box=element_rect(fill=None, color=None, size=0.5, linetype=None),
-        legend_text=element_text(
-            size=base_size * 0.6, color=blue, margin=dict(t=0, b=0, r=5, l=5)
-        ),
-        legend_title=element_blank(),
-        legend_background=element_blank(),
-        # Strip
-        strip_background=element_rect(fill=blue, color=blue),
-        strip_text=element_text(
-            size=base_size * 0.8, color=white, margin=dict(t=5, b=5)
-        ),
-        # Plot
-        plot_title=element_text(
-            size=base_size * 1.2, color=blue, margin=dict(t=0, r=0, b=4, l=0), hjust=0
-        ),
-        plot_subtitle=element_text(
-            size=base_size * 0.9, color=blue, margin=dict(t=0, r=0, b=3, l=0)
-        ),
-        plot_margin=0.025,
-        dpi=dpi,
-        figure_size=(
-            width / 100 if width is not None else 7,
-            height / 100 if height is not None else 5,
-        ),
-    )
+    pass
 
 
 def palette_timetk():
@@ -184,20 +133,7 @@ def palette_timetk():
     ```
 
     """
-    return dict(
-        blue="#2c3e50",  # blue
-        red="#e31a1c",  # red
-        green="#18BC9C",  # green
-        yellow="#CCBE93",  # yellow
-        steel_blue="#a6cee3",  # steel_blue
-        navy_blue="#1f78b4",  # navy_blue
-        light_green="#b2df8a",  # light_green
-        pink="#fb9a99",  # pink
-        light_orange="#fdbf6f",  # light_orange
-        orange="#ff7f00",  # orange
-        light_purple="#cab2d6",  # light_purple
-        purple="#6a3d9a",  # purple
-    )
+    pass
 
 
 def theme_plotly_timetk(
@@ -273,82 +209,4 @@ def theme_plotly_timetk(
     fig
     ```
     """
-
-    if not isinstance(fig, go.Figure):
-        raise TypeError("`theme_plotly_timetk` expects a plotly.graph_objects.Figure.")
-
-    resolved_colorway = (
-        list(colorway) if colorway is not None else list(palette_timetk().values())
-    )
-    resolved_margin = dict(l=60, r=40, t=70, b=60)
-    if margin is not None:
-        resolved_margin.update(margin)
-
-    legend_layout = dict(
-        orientation="h",
-        x=0.5,
-        xanchor="center",
-        y=-0.2,
-        yanchor="top",
-        bgcolor="rgba(0,0,0,0)",
-        title=dict(text=""),
-        font=dict(size=font_size * 0.85, color=axis_color),
-    )
-    if legend_kwargs:
-        legend_layout.update(legend_kwargs)
-
-    base_layout = dict(
-        template="plotly_white",
-        colorway=resolved_colorway,
-        font=dict(family=font_family, size=font_size, color=axis_color),
-        title=dict(
-            font=dict(
-                family=font_family,
-                size=title_font_size
-                if title_font_size is not None
-                else font_size * 1.2,
-                color=axis_color,
-            ),
-            x=title_x,
-            xanchor="center",
-        ),
-        margin=resolved_margin,
-        legend=legend_layout,
-        paper_bgcolor=background_color,
-        plot_bgcolor=background_color,
-    )
-    if layout_kwargs:
-        base_layout.update(layout_kwargs)
-
-    fig.update_layout(**base_layout)
-
-    xaxis_layout = dict(
-        showgrid=False,
-        zeroline=False,
-        ticks="outside",
-        tickcolor=axis_color,
-        ticklen=4,
-        title=dict(standoff=12),
-        automargin=True,
-    )
-    if xaxis_kwargs:
-        xaxis_layout.update(xaxis_kwargs)
-
-    yaxis_layout = dict(
-        showgrid=True,
-        gridcolor=grid_color,
-        zeroline=False,
-        ticks="outside",
-        tickcolor=axis_color,
-        ticklen=4,
-        title=dict(standoff=12),
-        automargin=True,
-    )
-    if yaxis_kwargs:
-        yaxis_layout.update(yaxis_kwargs)
-
-    fig.update_xaxes(**xaxis_layout)
-    fig.update_yaxes(**yaxis_layout)
-    fig.update_annotations(yshift=10)
-
-    return fig
+    pass
